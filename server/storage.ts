@@ -884,26 +884,26 @@ export class PostgresStorage implements IStorage {
   }
 
   async listScriptureContents(userId?: string, channelName?: string): Promise<ScriptureContent[]> {
-    const params: any[] = [];
-    const conditions: string[] = [];
-    if (userId) { params.push(userId); conditions.push(`user_id = $${params.length}`); }
-    if (channelName) { params.push(channelName); conditions.push(`channel_name = $${params.length}`); }
-    const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
-    const result = await this.pool.query(
-      `SELECT * FROM scripture_contents ${where} ORDER BY created_at DESC`,
-      params
-    );
-    return result.rows;
+    const { sql: rawSql } = await import("drizzle-orm");
+    const conditions: any[] = [];
+    if (userId) conditions.push(eq(scriptureContents.userId, userId));
+    if (channelName) conditions.push(eq(scriptureContents.channelName as any, channelName));
+
+    let query = this.db.select().from(scriptureContents).orderBy(desc(scriptureContents.createdAt)) as any;
+    if (conditions.length === 1) query = query.where(conditions[0]);
+    else if (conditions.length > 1) query = query.where(and(...conditions));
+    return query;
   }
 
   async listScriptureChannels(userId: string): Promise<{ channelName: string; count: number }[]> {
-    const result = await this.pool.query(`
-      SELECT channel_name as "channelName", COUNT(*)::int as count
-      FROM scripture_contents
-      WHERE user_id = $1 AND channel_name IS NOT NULL
-      GROUP BY channel_name ORDER BY count DESC
-    `, [userId]);
-    return result.rows;
+    const { sql: rawSql } = await import("drizzle-orm");
+    const result = await this.db.execute(
+      rawSql`SELECT channel_name as "channelName", COUNT(*)::int as count
+             FROM scripture_contents
+             WHERE user_id = ${userId} AND channel_name IS NOT NULL
+             GROUP BY channel_name ORDER BY count DESC`
+    );
+    return result.rows as { channelName: string; count: number }[];
   }
 
   async deleteScriptureContent(id: string): Promise<boolean> {
