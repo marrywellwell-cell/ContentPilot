@@ -403,6 +403,40 @@ function ResultsDisplay({
 
 // ─── 저장된 콘텐츠 목록 ───────────────────────────────────────────────────────
 
+// 말씀 플레이스홀더 썸네일 (이미지 없을 때)
+function ScriptureThumbnail({ imageUrl, reference }: { imageUrl?: string; reference: string }) {
+  const [error, setError] = useState(false);
+
+  if (imageUrl && !error) {
+    return (
+      <img
+        src={imageUrl}
+        alt={reference}
+        className="w-20 h-20 rounded-lg object-cover flex-shrink-0"
+        onError={() => setError(true)}
+      />
+    );
+  }
+
+  // 말씀 구절 플레이스홀더
+  const book = reference.split(" ")[0] || "말씀";
+  const colors = [
+    "from-purple-600 to-indigo-600",
+    "from-blue-600 to-cyan-600",
+    "from-green-600 to-teal-600",
+    "from-orange-500 to-amber-600",
+    "from-rose-500 to-pink-600",
+  ];
+  const colorIdx = book.charCodeAt(0) % colors.length;
+
+  return (
+    <div className={`w-20 h-20 rounded-lg flex-shrink-0 bg-gradient-to-br ${colors[colorIdx]} flex flex-col items-center justify-center p-1`}>
+      <BookOpen className="w-5 h-5 text-white/80 mb-1" />
+      <p className="text-white text-[9px] font-bold text-center leading-tight line-clamp-2">{book}</p>
+    </div>
+  );
+}
+
 function SavedList({
   items, isLoading, onDelete, onSelect,
 }: {
@@ -430,9 +464,10 @@ function SavedList({
         <Card key={item.id} className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => onSelect(item)}>
           <CardContent className="p-4">
             <div className="flex gap-3">
-              {item.imageUrls?.[0] && (
-                <img src={item.imageUrls[0]} alt={item.bibleReference} className="w-20 h-20 rounded-lg object-cover flex-shrink-0" />
-              )}
+              <ScriptureThumbnail
+                imageUrl={item.imageUrls?.[0]}
+                reference={item.bibleReference || "말씀"}
+              />
               <div className="flex-1 min-w-0">
                 <p className="font-semibold text-sm truncate">{item.bibleReference}</p>
                 <p className="text-xs text-muted-foreground line-clamp-2 mt-1">{item.bibleVerse}</p>
