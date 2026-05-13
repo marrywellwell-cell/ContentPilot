@@ -13,7 +13,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import {
   Loader2, Youtube, BookOpen, Download, Copy, Check,
   Sparkles, Trash2, FileText, ChevronDown, ChevronUp,
-  Save, RefreshCw, Image as ImageIcon, Play, Bot, Filter,
+  Save, RefreshCw, Image as ImageIcon, Play, Bot, Filter, Calendar,
 } from "lucide-react";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -497,7 +497,15 @@ function SavedList({
                 reference={item.bibleReference || "말씀"}
               />
               <div className="flex-1 min-w-0">
-                <p className="font-semibold text-sm truncate">{item.bibleReference}</p>
+                <div className="flex items-start justify-between gap-2">
+                  <p className="font-semibold text-sm truncate">{item.bibleReference}</p>
+                  {item.createdAt && (
+                    <span className="text-[10px] text-muted-foreground flex items-center gap-0.5 flex-shrink-0">
+                      <Calendar className="w-2.5 h-2.5" />
+                      {new Date(item.createdAt).toLocaleDateString("ko-KR", { year: "2-digit", month: "2-digit", day: "2-digit" })}
+                    </span>
+                  )}
+                </div>
                 <p className="text-xs text-muted-foreground line-clamp-2 mt-1">{item.bibleVerse}</p>
                 {item.videoTitle && <p className="text-xs text-muted-foreground mt-1 truncate">{item.videoTitle}</p>}
               </div>
