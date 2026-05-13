@@ -7,6 +7,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -14,6 +19,7 @@ import {
   Loader2, Youtube, BookOpen, Download, Copy, Check,
   Sparkles, Trash2, FileText, ChevronDown, ChevronUp,
   Save, RefreshCw, Image as ImageIcon, Play, Bot, Filter, Calendar,
+  Instagram, Hash,
 } from "lucide-react";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -521,6 +527,191 @@ function SavedList({
   );
 }
 
+// ─── 저장된 콘텐츠 상세 다이얼로그 ──────────────────────────────────────────────
+
+function ContentDetailDialog({
+  item, open, onOpenChange, onDelete,
+}: {
+  item: ScriptureContent | null;
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  onDelete: (id: string) => void;
+}) {
+  const { toast } = useToast();
+  const [copiedField, setCopiedField] = useState<string | null>(null);
+
+  if (!item) return null;
+
+  const copy = async (text: string, field: string) => {
+    await navigator.clipboard.writeText(text);
+    setCopiedField(field);
+    toast({ title: "복사 완료!" });
+    setTimeout(() => setCopiedField(null), 2000);
+  };
+
+  const imageUrl = item.imageUrls?.[0];
+  const hashtags = item.instagramHashtags || [];
+  const caption = item.instagramCaption || "";
+  const slides = item.instagramSlides || [];
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-2xl max-h-[90vh] p-0">
+        <DialogHeader className="px-6 pt-6 pb-0">
+          <DialogTitle className="flex items-center gap-2 text-lg">
+            <BookOpen className="w-5 h-5 text-primary" />
+            {item.bibleReference}
+          </DialogTitle>
+          {item.createdAt && (
+            <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
+              <Calendar className="w-3 h-3" />
+              {new Date(item.createdAt).toLocaleDateString("ko-KR", { year: "numeric", month: "long", day: "numeric" })}
+              {(item as any).channelName && (
+                <span className="ml-2 px-2 py-0.5 bg-primary/10 text-primary rounded-full text-[10px]">
+                  {(item as any).channelName}
+                </span>
+              )}
+            </p>
+          )}
+        </DialogHeader>
+
+        <ScrollArea className="max-h-[calc(90vh-120px)]">
+          <div className="px-6 pb-6 space-y-5 mt-4">
+
+            {/* 이미지 */}
+            {imageUrl && (
+              <div className="flex justify-center">
+                <div className="relative w-full max-w-xs aspect-square rounded-xl overflow-hidden bg-muted shadow-md">
+                  <img src={imageUrl} alt={item.bibleReference} className="w-full h-full object-cover"
+                    onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                </div>
+              </div>
+            )}
+
+            {/* 성경 말씀 */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-semibold flex items-center gap-1.5">
+                  <BookOpen className="w-4 h-4 text-primary" />성경 말씀
+                </h3>
+                <Button size="sm" variant="ghost" className="h-7 px-2"
+                  onClick={() => copy(`${item.bibleReference}\n"${item.bibleVerse}"`, "verse")}>
+                  {copiedField === "verse" ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
+                </Button>
+              </div>
+              <div className="bg-primary/5 rounded-lg p-4 border border-primary/10">
+                <p className="text-xs text-primary font-medium mb-2">{item.bibleReference}</p>
+                <p className="text-sm italic leading-relaxed">"{item.bibleVerse}"</p>
+              </div>
+            </div>
+
+            <Separator />
+
+            {/* 영상 제목 */}
+            {item.videoTitle && (
+              <div className="space-y-1">
+                <h3 className="text-sm font-semibold flex items-center gap-1.5">
+                  <Youtube className="w-4 h-4 text-red-500" />영상
+                </h3>
+                <p className="text-sm text-muted-foreground">{item.videoTitle}</p>
+                {item.videoSummary && (
+                  <p className="text-xs text-muted-foreground line-clamp-3 mt-1">{item.videoSummary}</p>
+                )}
+              </div>
+            )}
+
+            {/* 슬라이드 */}
+            {slides.length > 0 && (
+              <div className="space-y-2">
+                <h3 className="text-sm font-semibold flex items-center gap-1.5">
+                  <Instagram className="w-4 h-4 text-pink-500" />슬라이드 ({slides.length}장)
+                </h3>
+                <div className="grid grid-cols-3 gap-2">
+                  {slides.map((slide, i) => (
+                    <div key={i} className="aspect-square rounded-lg bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center p-2">
+                      <p className="text-white text-[10px] font-bold text-center leading-tight">{slide}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* 캡션 */}
+            {caption && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-semibold flex items-center gap-1.5">
+                    <Instagram className="w-4 h-4 text-pink-500" />인스타그램 캡션
+                  </h3>
+                  <Button size="sm" variant="ghost" className="h-7 px-2"
+                    onClick={() => copy(`${caption}\n\n${hashtags.map(h => h.startsWith('#') ? h : `#${h}`).join(' ')}`, "caption")}>
+                    {copiedField === "caption" ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
+                  </Button>
+                </div>
+                <div className="bg-muted rounded-lg p-3 space-y-3">
+                  <p className="text-sm whitespace-pre-wrap leading-relaxed">{caption}</p>
+                  {hashtags.length > 0 && (
+                    <div className="flex flex-wrap gap-1 pt-2 border-t">
+                      {hashtags.map((tag, i) => (
+                        <span key={i} className="text-primary text-xs font-medium">
+                          {tag.startsWith("#") ? tag : `#${tag}`}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* 해시태그만 있는 경우 */}
+            {!caption && hashtags.length > 0 && (
+              <div className="space-y-2">
+                <h3 className="text-sm font-semibold flex items-center gap-1.5">
+                  <Hash className="w-4 h-4 text-primary" />해시태그
+                </h3>
+                <div className="flex flex-wrap gap-1.5">
+                  {hashtags.map((tag, i) => (
+                    <Badge key={i} variant="secondary" className="text-xs">
+                      {tag.startsWith("#") ? tag : `#${tag}`}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* 블로그 */}
+            {item.blogContent && (
+              <>
+                <Separator />
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-semibold flex items-center gap-1.5">
+                      <FileText className="w-4 h-4 text-blue-500" />블로그 내용
+                    </h3>
+                    <Button size="sm" variant="ghost" className="h-7 px-2"
+                      onClick={() => copy(item.blogContent!, "blog")}>
+                      {copiedField === "blog" ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
+                    </Button>
+                  </div>
+                  {item.blogTitle && <p className="font-medium text-sm">{item.blogTitle}</p>}
+                  <p className="text-xs text-muted-foreground leading-relaxed line-clamp-6 whitespace-pre-wrap">{item.blogContent}</p>
+                </div>
+              </>
+            )}
+
+            {/* 삭제 버튼 */}
+            <Separator />
+            <Button variant="destructive" size="sm" className="w-full"
+              onClick={() => { onDelete(item.id); onOpenChange(false); }}>
+              <Trash2 className="w-4 h-4 mr-2" />이 콘텐츠 삭제
+            </Button>
+          </div>
+        </ScrollArea>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ─── 자동화 탭 ────────────────────────────────────────────────────────────────
 
 function AutomationTab() {
@@ -613,6 +804,8 @@ export default function YouTubeScripture() {
   const [transcriptText, setTranscriptText] = useState("");
   const [inputMode, setInputMode] = useState<"url" | "transcript">("url");
   const [filterChannel, setFilterChannel] = useState("all");
+  const [selectedItem, setSelectedItem] = useState<ScriptureContent | null>(null);
+  const [detailOpen, setDetailOpen] = useState(false);
 
   // 채널 목록
   const channelsQuery = useQuery<{ channelName: string; count: number }[]>({
@@ -850,7 +1043,7 @@ export default function YouTubeScripture() {
             items={instagramItems}
             isLoading={savedContentsQuery.isLoading}
             onDelete={(id) => deleteMutation.mutate(id)}
-            onSelect={handleLoadSaved}
+            onSelect={(item) => { setSelectedItem(item); setDetailOpen(true); }}
             filterChannel={filterChannel}
             onFilterChange={(v) => { setFilterChannel(v); queryClient.invalidateQueries({ queryKey: ["/api/scripture-contents"] }); }}
             channels={channelsQuery.data || []}
@@ -863,12 +1056,20 @@ export default function YouTubeScripture() {
             items={blogItems}
             isLoading={savedContentsQuery.isLoading}
             onDelete={(id) => deleteMutation.mutate(id)}
-            onSelect={handleLoadSaved}
+            onSelect={(item) => { setSelectedItem(item); setDetailOpen(true); }}
             filterChannel={filterChannel}
             onFilterChange={(v) => { setFilterChannel(v); queryClient.invalidateQueries({ queryKey: ["/api/scripture-contents"] }); }}
             channels={channelsQuery.data || []}
           />
         </TabsContent>
+
+        {/* 상세 다이얼로그 */}
+        <ContentDetailDialog
+          item={selectedItem}
+          open={detailOpen}
+          onOpenChange={setDetailOpen}
+          onDelete={(id) => { deleteMutation.mutate(id); queryClient.invalidateQueries({ queryKey: ["/api/scripture-contents"] }); }}
+        />
 
         {/* ── 자동화 탭 ── */}
         <TabsContent value="automation">
