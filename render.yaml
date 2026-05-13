@@ -1,0 +1,30 @@
+services:
+  - type: web
+    name: contentpilot
+    runtime: node
+    buildCommand: npm install && npm run build
+    startCommand: npm run start
+    healthCheckPath: /api/auth/user
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: DATABASE_URL
+        fromDatabase:
+          name: contentpilot-db
+          property: connectionString
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: APP_BASE_URL
+        sync: false
+
+databases:
+  - name: contentpilot-db
+    databaseName: contentpilot
+    user: contentpilot
+    plan: free
