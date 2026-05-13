@@ -1310,10 +1310,22 @@ Solution: ${brandAnalysis.solution || "없음"}`;
   app.get("/api/scripture-contents", isAuthenticated, async (req: any, res) => {
     try {
       const userId = (req.user as any).id;
-      const contents = await storage.listScriptureContents(userId);
+      const { channel } = req.query;
+      const contents = await storage.listScriptureContents(userId, channel as string | undefined);
       res.json(contents);
     } catch (error: any) {
       console.error("Error listing scripture contents:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // 채널 목록 조회 (scripture_contents 기반)
+  app.get("/api/scripture-channels", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = (req.user as any).id;
+      const channels = await storage.listScriptureChannels(userId);
+      res.json(channels);
+    } catch (error: any) {
       res.status(500).json({ error: error.message });
     }
   });

@@ -167,6 +167,8 @@ export const scriptureContents = pgTable("scripture_contents", {
   blogTitle: text("blog_title"),
   blogContent: text("blog_content"),
   blogMetaDescription: text("blog_meta_description"),
+  channelName: text("channel_name"),
+  channelUrl: text("channel_url"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

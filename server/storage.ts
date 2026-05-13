@@ -39,7 +39,8 @@ export interface IStorage {
   // Scripture content operations
   createScriptureContent(content: InsertScriptureContent): Promise<ScriptureContent>;
   getScriptureContent(id: string): Promise<ScriptureContent | undefined>;
-  listScriptureContents(userId?: string): Promise<ScriptureContent[]>;
+  listScriptureContents(userId?: string, channelName?: string): Promise<ScriptureContent[]>;
+  listScriptureChannels(userId: string): Promise<{ channelName: string; count: number }[]>;
   deleteScriptureContent(id: string): Promise<boolean>;
   
   // Scripture automation operations
@@ -395,12 +396,21 @@ export class MemStorage implements IStorage {
     return this.scriptureContentsMap.get(id);
   }
 
-  async listScriptureContents(userId?: string): Promise<ScriptureContent[]> {
+  async listScriptureContents(userId?: string, channelName?: string): Promise<ScriptureContent[]> {
     let contents = Array.from(this.scriptureContentsMap.values());
-    if (userId) {
-      contents = contents.filter(c => c.userId === userId);
-    }
+    if (userId) contents = contents.filter(c => c.userId === userId);
+    if (channelName) contents = contents.filter(c => (c as any).channelName === channelName);
     return contents.sort((a, b) => (b.createdAt?.getTime() || 0) - (a.createdAt?.getTime() || 0));
+  }
+
+  async listScriptureChannels(userId: string): Promise<{ channelName: string; count: number }[]> {
+    const contents = Array.from(this.scriptureContentsMap.values()).filter(c => c.userId === userId);
+    const map: Record<string, number> = {};
+    for (const c of contents) {
+      const name = (c as any).channelName || '기타';
+      map[name] = (map[name] || 0) + 1;
+    }
+    return Object.entries(map).map(([channelName, count]) => ({ channelName, count })).sort((a, b) => b.count - a.count);
   }
 
   async deleteScriptureContent(id: string): Promise<boolean> {
@@ -682,13 +692,14 @@ export class MemStorage implements IStorage {
 
 export class PostgresStorage implements IStorage {
   private db;
+  private pool: InstanceType<typeof Pool>;
 
   constructor() {
-    const pool = new Pool({
+    this.pool = new Pool({
       connectionString: process.env.DATABASE_URL,
       ssl: { rejectUnauthorized: false },
     });
-    this.db = drizzle(pool);
+    this.db = drizzle(this.pool);
   }
 
   async getUser(id: string): Promise<User | undefined> {
@@ -872,15 +883,27 @@ export class PostgresStorage implements IStorage {
     return result[0];
   }
 
-  async listScriptureContents(userId?: string): Promise<ScriptureContent[]> {
-    if (userId) {
-      return await this.db
-        .select()
-        .from(scriptureContents)
-        .where(eq(scriptureContents.userId, userId))
-        .orderBy(desc(scriptureContents.createdAt));
-    }
-    return await this.db.select().from(scriptureContents).orderBy(desc(scriptureContents.createdAt));
+  async listScriptureContents(userId?: string, channelName?: string): Promise<ScriptureContent[]> {
+    const params: any[] = [];
+    const conditions: string[] = [];
+    if (userId) { params.push(userId); conditions.push(`user_id = $${params.length}`); }
+    if (channelName) { params.push(channelName); conditions.push(`channel_name = $${params.length}`); }
+    const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+    const result = await this.pool.query(
+      `SELECT * FROM scripture_contents ${where} ORDER BY created_at DESC`,
+      params
+    );
+    return result.rows;
+  }
+
+  async listScriptureChannels(userId: string): Promise<{ channelName: string; count: number }[]> {
+    const result = await this.pool.query(`
+      SELECT channel_name as "channelName", COUNT(*)::int as count
+      FROM scripture_contents
+      WHERE user_id = $1 AND channel_name IS NOT NULL
+      GROUP BY channel_name ORDER BY count DESC
+    `, [userId]);
+    return result.rows;
   }
 
   async deleteScriptureContent(id: string): Promise<boolean> {

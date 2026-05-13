@@ -13,8 +13,11 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import {
   Loader2, Youtube, BookOpen, Download, Copy, Check,
   Sparkles, Trash2, FileText, ChevronDown, ChevronUp,
-  Save, RefreshCw, Image as ImageIcon, Play, Bot,
+  Save, RefreshCw, Image as ImageIcon, Play, Bot, Filter,
 } from "lucide-react";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
 import type { ScriptureContent, SavedYoutubeChannel } from "@shared/schema";
 
 // ─── 타입 ─────────────────────────────────────────────────────────────────────
@@ -438,12 +441,15 @@ function ScriptureThumbnail({ imageUrl, reference }: { imageUrl?: string; refere
 }
 
 function SavedList({
-  items, isLoading, onDelete, onSelect,
+  items, isLoading, onDelete, onSelect, filterChannel, onFilterChange, channels,
 }: {
   items: ScriptureContent[];
   isLoading: boolean;
   onDelete: (id: string) => void;
   onSelect: (item: ScriptureContent) => void;
+  filterChannel: string;
+  onFilterChange: (v: string) => void;
+  channels: { channelName: string; count: number }[];
 }) {
   if (isLoading) return (
     <div className="flex justify-center py-12">
@@ -451,14 +457,36 @@ function SavedList({
     </div>
   );
 
-  if (!items.length) return (
-    <div className="text-center py-16 text-muted-foreground">
-      <BookOpen className="w-12 h-12 mx-auto mb-4 opacity-30" />
-      <p>저장된 콘텐츠가 없습니다.</p>
-    </div>
-  );
-
   return (
+    <div className="space-y-4">
+      {/* 채널 필터 */}
+      <div className="flex items-center gap-3">
+        <Filter className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+        <Select value={filterChannel} onValueChange={onFilterChange}>
+          <SelectTrigger className="w-72">
+            <SelectValue placeholder="전체 채널" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">전체 채널 ({items.length}개)</SelectItem>
+            {channels.map((ch) => (
+              <SelectItem key={ch.channelName} value={ch.channelName}>
+                {ch.channelName} ({ch.count}개)
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        {filterChannel !== "all" && (
+          <span className="text-sm text-muted-foreground">{items.length}개</span>
+        )}
+      </div>
+
+      {!items.length && (
+        <div className="text-center py-16 text-muted-foreground">
+          <BookOpen className="w-12 h-12 mx-auto mb-4 opacity-30" />
+          <p>저장된 콘텐츠가 없습니다.</p>
+        </div>
+      )}
+
     <div className="grid gap-4 md:grid-cols-2">
       {items.map((item) => (
         <Card key={item.id} className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => onSelect(item)}>
@@ -480,6 +508,7 @@ function SavedList({
           </CardContent>
         </Card>
       ))}
+    </div>
     </div>
   );
 }
@@ -575,9 +604,25 @@ export default function YouTubeScripture() {
   const [verseHint, setVerseHint] = useState("");
   const [transcriptText, setTranscriptText] = useState("");
   const [inputMode, setInputMode] = useState<"url" | "transcript">("url");
+  const [filterChannel, setFilterChannel] = useState("all");
 
+  // 채널 목록
+  const channelsQuery = useQuery<{ channelName: string; count: number }[]>({
+    queryKey: ["/api/scripture-channels"],
+    staleTime: 60000,
+  });
+
+  // 채널 필터 적용된 콘텐츠 조회
   const savedContentsQuery = useQuery<ScriptureContent[]>({
-    queryKey: ["/api/scripture-contents"],
+    queryKey: ["/api/scripture-contents", filterChannel],
+    queryFn: async () => {
+      const url = filterChannel && filterChannel !== "all"
+        ? `/api/scripture-contents?channel=${encodeURIComponent(filterChannel)}`
+        : "/api/scripture-contents";
+      const res = await fetch(url, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch");
+      return res.json();
+    },
   });
 
   const instagramItems = savedContentsQuery.data?.filter(c => !c.blogContent) || [];
@@ -798,6 +843,9 @@ export default function YouTubeScripture() {
             isLoading={savedContentsQuery.isLoading}
             onDelete={(id) => deleteMutation.mutate(id)}
             onSelect={handleLoadSaved}
+            filterChannel={filterChannel}
+            onFilterChange={(v) => { setFilterChannel(v); queryClient.invalidateQueries({ queryKey: ["/api/scripture-contents"] }); }}
+            channels={channelsQuery.data || []}
           />
         </TabsContent>
 
@@ -808,6 +856,9 @@ export default function YouTubeScripture() {
             isLoading={savedContentsQuery.isLoading}
             onDelete={(id) => deleteMutation.mutate(id)}
             onSelect={handleLoadSaved}
+            filterChannel={filterChannel}
+            onFilterChange={(v) => { setFilterChannel(v); queryClient.invalidateQueries({ queryKey: ["/api/scripture-contents"] }); }}
+            channels={channelsQuery.data || []}
           />
         </TabsContent>
 
