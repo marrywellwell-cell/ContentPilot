@@ -2,7 +2,7 @@ services:
   - type: web
     name: contentpilot
     runtime: node
-    buildCommand: npm install && npm run build
+    buildCommand: npm install --include=dev && npm run build
     startCommand: npm run start
     healthCheckPath: /api/auth/user
     envVars:
