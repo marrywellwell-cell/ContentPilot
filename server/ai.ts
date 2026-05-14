@@ -298,8 +298,7 @@ export async function generateImage(
 
   const prompt = `Create a stunning Korean-style realistic photograph for "${keyword}":
 - Style: Korean aesthetic photography, K-lifestyle, modern Korean visual style
-- FOCUS ON objects, products, food, nature, scenes — avoid showing people's faces
-- If people needed, show only hands, silhouette, or back view — no faces
+- NO people, NO human faces, NO persons — objects, products, food, nature, and scenes ONLY
 - DO NOT include any text, letters, or typography in the image
 - Korean aesthetic details:
   * If food: Korean cuisine (한식), Korean cafe aesthetic, Korean street food, beautiful Korean plating
@@ -331,8 +330,7 @@ export async function generateInstagramVisual(
   if (isCover) {
     prompt = `Create a stunning Korean-style Instagram cover photo for "${keyword}":
 - Korean aesthetic: K-lifestyle, modern Korean visual style, bright and clean
-- FOCUS ON objects, food, products, scenery — NO people faces
-- Only hands or silhouettes if absolutely needed
+- NO people, NO human faces, NO persons — objects, food, products, scenery ONLY
 - DO NOT include any text in the image
 - Korean aesthetic by topic:
   * Food: Korean cuisine, Korean cafe, K-food aesthetic, beautiful Korean plating
@@ -348,10 +346,10 @@ Topic: ${keyword}`;
   } else {
     prompt = `Create a Korean-style Instagram photo for "${slideHeadline}":
 - Korean aesthetic photography, K-lifestyle visual style
-- FOCUS ON objects, products, scenery — no people faces
+- NO people, NO human faces, NO persons — objects, products, scenery ONLY
 - DO NOT include any text in the image
 - Match the topic "${slideHeadline}" with Korean context:
-  * Korean settings, Korean products, Korean people, Korean aesthetic
+  * Korean settings, Korean products, Korean aesthetic objects
   * Bright and clean Korean visual style
   * Warm or pastel tones typical of Korean Instagram aesthetic
 - Square format (1:1)
