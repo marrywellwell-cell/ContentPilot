@@ -698,7 +698,17 @@ export class PostgresStorage implements IStorage {
     this.pool = new Pool({
       connectionString: process.env.DATABASE_URL,
       ssl: { rejectUnauthorized: false },
+      max: 10,
+      idleTimeoutMillis: 30000,
+      connectionTimeoutMillis: 10000,
+      keepAlive: true,
     });
+
+    // 연결 에러 시 자동 복구
+    this.pool.on("error", (err) => {
+      console.error("[DB Pool] 연결 오류 (자동 복구됨):", err.message);
+    });
+
     this.db = drizzle(this.pool);
   }
 
