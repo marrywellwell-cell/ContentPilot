@@ -21,6 +21,7 @@ import InventionIdea from "@/pages/InventionIdea";
 import ContentList from "@/pages/ContentList";
 import ApiKeys from "@/pages/ApiKeys";
 import Landing from "@/pages/Landing";
+import InstagramCallback from "@/pages/InstagramCallback";
 import NotFound from "@/pages/not-found";
 import { Loader2 } from "lucide-react";
 
@@ -28,6 +29,7 @@ function Router() {
   return (
     <Switch>
       <Route path="/" component={Generate} />
+      <Route path="/auth/instagram/callback" component={InstagramCallback} />
       <Route path="/dashboard" component={Dashboard} />
       <Route path="/brand-analysis" component={BrandAnalysis} />
       <Route path="/monthly-plan" component={MonthlyPlan} />
