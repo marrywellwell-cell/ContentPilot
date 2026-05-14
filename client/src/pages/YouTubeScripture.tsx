@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
+import YouTubeUploadDialog from "@/components/YouTubeUploadDialog";
 import { useToast } from "@/hooks/use-toast";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -335,7 +336,7 @@ function BlogResultCard({ blog }: { blog: BlogContent }) {
 // ─── 결과 화면 ────────────────────────────────────────────────────────────────
 
 function ResultsDisplay({
-  results, onRegenerate, onSave, isSaving, isSaved, savedContentId,
+  results, onRegenerate, onSave, isSaving, isSaved, savedContentId, onYouTubeUpload,
 }: {
   results: GeneratedContent;
   onRegenerate: () => void;
@@ -343,6 +344,7 @@ function ResultsDisplay({
   isSaving: boolean;
   isSaved: boolean;
   savedContentId?: string;
+  onYouTubeUpload?: () => void;
 }) {
   const { toast } = useToast();
   const [blog, setBlog] = useState<BlogContent | null>(null);
@@ -379,10 +381,18 @@ function ResultsDisplay({
         <Button variant="outline" onClick={onRegenerate} className="gap-2">
           <RefreshCw className="w-4 h-4" />새로 만들기
         </Button>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           <Button variant="outline" onClick={() => blogMutation.mutate()} disabled={blogMutation.isPending} className="gap-2">
             {blogMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
             블로그 생성
+          </Button>
+          <Button
+            variant="outline"
+            className="gap-2 text-red-600 border-red-300 hover:bg-red-50 dark:hover:bg-red-950"
+            onClick={() => onYouTubeUpload?.()}
+          >
+            <Youtube className="w-4 h-4" />
+            YouTube 발행
           </Button>
           <Button onClick={onSave} disabled={isSaving || isSaved} className="gap-2">
             {isSaved ? <><Check className="w-4 h-4" />저장됨</> : isSaving ? <><Loader2 className="w-4 h-4 animate-spin" />저장 중</> : <><Save className="w-4 h-4" />저장하기</>}
@@ -799,6 +809,7 @@ export default function YouTubeScripture() {
   const [results, setResults] = useState<GeneratedContent | null>(null);
   const [isSaved, setIsSaved] = useState(false);
   const [savedContentId, setSavedContentId] = useState<string | undefined>();
+  const [ytUploadOpen, setYtUploadOpen] = useState(false);
   const [youtubeUrl, setYoutubeUrl] = useState("");
   const [verseHint, setVerseHint] = useState("");
   const [transcriptText, setTranscriptText] = useState("");
@@ -1026,14 +1037,27 @@ export default function YouTubeScripture() {
           {viewState === "loading" && <LoadingState steps={loadingSteps} />}
 
           {viewState === "results" && results && (
-            <ResultsDisplay
-              results={results}
-              onRegenerate={() => { setViewState("input"); setResults(null); setIsSaved(false); }}
-              onSave={() => saveMutation.mutate()}
-              isSaving={saveMutation.isPending}
-              isSaved={isSaved}
-              savedContentId={savedContentId}
-            />
+            <>
+              <ResultsDisplay
+                results={results}
+                onRegenerate={() => { setViewState("input"); setResults(null); setIsSaved(false); }}
+                onSave={() => saveMutation.mutate()}
+                isSaving={saveMutation.isPending}
+                isSaved={isSaved}
+                savedContentId={savedContentId}
+                onYouTubeUpload={() => setYtUploadOpen(true)}
+              />
+              <YouTubeUploadDialog
+                open={ytUploadOpen}
+                onOpenChange={setYtUploadOpen}
+                scriptureId={savedContentId || "temp"}
+                verseReference={results.verseReference || results.bibleReference || ""}
+                bibleVerse={results.verseContent || results.bibleVerse || ""}
+                coreMessage={results.coreMessage || ""}
+                hashtags={results.hashtags || results.instagramHashtags || []}
+                imageUrls={results.imageUrls || (results.imageUrl ? [results.imageUrl] : [])}
+              />
+            </>
           )}
         </TabsContent>
 

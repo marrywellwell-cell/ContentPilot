@@ -2121,6 +2121,90 @@ Solution: ${brandAnalysis.solution || "없음"}`;
     res.send(buf);
   });
 
+  // ─── YouTube Upload API ───────────────────────────────────────────────────
+
+  app.get("/api/youtube-upload/status", isAuthenticated, async (req: any, res) => {
+    const { hasYouTubeConfig, isYouTubeAuthenticated } = await import("./youtube-upload");
+    const userId = (req.user as any).id;
+    res.json({
+      isConfigured: hasYouTubeConfig(),
+      isAuthenticated: isYouTubeAuthenticated(userId),
+    });
+  });
+
+  app.get("/api/youtube-upload/auth-url", isAuthenticated, async (req: any, res) => {
+    const { getAuthUrl } = await import("./youtube-upload");
+    const userId = (req.user as any).id;
+    try {
+      const authUrl = getAuthUrl(userId, req);
+      res.json({ authUrl });
+    } catch (e: any) {
+      res.status(400).json({ error: e.message });
+    }
+  });
+
+  app.get("/api/youtube-upload/callback", async (req: any, res) => {
+    const { handleCallback } = await import("./youtube-upload");
+    const { code, state: userId } = req.query;
+    if (!code || !userId) return res.status(400).send("Invalid callback");
+    try {
+      await handleCallback(code as string, userId as string, req);
+      res.send(`<script>window.opener?.postMessage({type:'youtube-auth-success'},'*');window.close();</script>`);
+    } catch (e: any) {
+      res.status(400).send(`인증 실패: ${e.message}`);
+    }
+  });
+
+  app.get("/api/youtube-upload/channels", isAuthenticated, async (req: any, res) => {
+    const { getMyYouTubeChannels } = await import("./youtube-upload");
+    const userId = (req.user as any).id;
+    const channels = await getMyYouTubeChannels(userId);
+    res.json({ channels });
+  });
+
+  app.post("/api/youtube-upload/logout", isAuthenticated, async (req: any, res) => {
+    const { clearTokens } = await import("./youtube-upload");
+    const userId = (req.user as any).id;
+    clearTokens(userId);
+    res.json({ success: true });
+  });
+
+  // 말씀 콘텐츠 → YouTube Shorts 업로드
+  app.post("/api/youtube-upload/scripture/:id", isAuthenticated, async (req: any, res) => {
+    const { uploadVideoToYouTube } = await import("./youtube-upload");
+    const userId = (req.user as any).id;
+    const { id } = req.params;
+    const { title, description, tags, privacyStatus, videoDataUrl } = req.body;
+
+    if (!videoDataUrl) return res.status(400).json({ error: "영상 데이터가 없습니다." });
+
+    try {
+      // base64 영상 데이터를 임시 파일로 저장
+      const tmpDir = "/tmp/youtube";
+      const fs = await import("fs/promises");
+      await fs.mkdir(tmpDir, { recursive: true });
+      const filePath = `${tmpDir}/scripture-${id}-${Date.now()}.mp4`;
+
+      const base64Data = videoDataUrl.replace(/^data:\w+\/\w+;base64,/, "");
+      await fs.writeFile(filePath, Buffer.from(base64Data, "base64"));
+
+      const result = await uploadVideoToYouTube(userId, filePath, {
+        title: title || "말씀 콘텐츠",
+        description: description || "",
+        tags: tags || [],
+        privacyStatus: privacyStatus || "private",
+      });
+
+      // 임시 파일 삭제
+      await fs.unlink(filePath).catch(() => {});
+
+      res.json(result);
+    } catch (e: any) {
+      console.error("[YouTube Upload]", e);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   const httpServer = createServer(app);
 
   return httpServer;
