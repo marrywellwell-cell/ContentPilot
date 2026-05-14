@@ -174,15 +174,18 @@ async function generateScriptureImageFile(
       const openai = getOpenAI();
       const response = await openai.images.generate({
         model: "dall-e-3",
-        prompt: prompt + " No text in image. High quality, photorealistic.",
+        prompt: (prompt + " No text in image. High quality, photorealistic.").slice(0, 1000),
         n: 1,
         size: "1024x1024",
-        response_format: "b64_json",
       });
-      const b64 = response.data?.[0]?.b64_json;
-      if (b64) {
-        await fs.writeFile(filePath, Buffer.from(b64, "base64"));
-        return filePath;
+      const imageUrl = response.data?.[0]?.url;
+      if (imageUrl) {
+        const imgRes = await fetch(imageUrl);
+        if (imgRes.ok) {
+          const buffer = await imgRes.arrayBuffer();
+          await fs.writeFile(filePath, Buffer.from(buffer));
+          return filePath;
+        }
       }
     } catch (err: any) {
       console.warn("[scripture-generator] gpt-image-1 실패:", err.message);

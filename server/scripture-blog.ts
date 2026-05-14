@@ -78,12 +78,17 @@ async function generateBlogImageFile(prompt: string, filename: string): Promise<
       const openai = getOpenAI();
       const res = await openai.images.generate({
         model: "dall-e-3",
-        prompt: prompt + " No text in image.",
+        prompt: (prompt + " No text in image. Photorealistic.").slice(0, 1000),
         n: 1, size: "1024x1024",
-        response_format: "b64_json",
       });
-      const b64 = res.data?.[0]?.b64_json;
-      if (b64) { await fs.writeFile(filePath, Buffer.from(b64, "base64")); return filePath; }
+      const imageUrl = res.data?.[0]?.url;
+      if (imageUrl) {
+        const imgRes = await fetch(imageUrl);
+        if (imgRes.ok) {
+          await fs.writeFile(filePath, Buffer.from(await imgRes.arrayBuffer()));
+          return filePath;
+        }
+      }
     } catch (e: any) { console.warn("[scripture-blog] dall-e-3:", e.message); }
   }
 

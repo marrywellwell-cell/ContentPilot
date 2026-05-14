@@ -222,23 +222,28 @@ ${brandContext ? "브랜드의 USP, 고객 페르소나, Pain Point, 솔루션�
 // Generate image using OpenAI DALL-E 3 (primary) → Gemini (fallback)
 // Returns base64 data URL
 async function generateImageWithGemini(prompt: string): Promise<string> {
-  // 1차: OpenAI DALL-E 3
+  // 1차: OpenAI DALL-E 3 (URL 방식 → 다운로드 → base64)
   if (process.env.OPENAI_API_KEY) {
     try {
       const openai = getOpenAI();
       const response = await openai.images.generate({
         model: "dall-e-3",
-        prompt: prompt + " Photorealistic, high quality, no text in image.",
+        prompt: prompt.slice(0, 1000) + " Photorealistic, high quality, no text overlay.",
         n: 1,
         size: "1024x1024",
-        response_format: "b64_json",
       });
-      const b64 = response.data?.[0]?.b64_json;
-      if (b64) {
-        return `data:image/png;base64,${b64}`;
+      const imageUrl = response.data?.[0]?.url;
+      if (imageUrl) {
+        // URL에서 이미지 다운로드 후 base64 변환
+        const imgRes = await fetch(imageUrl);
+        if (imgRes.ok) {
+          const buffer = await imgRes.arrayBuffer();
+          const b64 = Buffer.from(buffer).toString("base64");
+          return `data:image/png;base64,${b64}`;
+        }
       }
     } catch (err: any) {
-      console.warn("DALL-E 이미지 생성 실패, Gemini 시도:", err?.message?.slice(0, 80));
+      console.warn("DALL-E 이미지 생성 실패:", err?.message?.slice(0, 100));
     }
   }
 
