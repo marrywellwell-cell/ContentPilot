@@ -224,45 +224,49 @@ ${brandContext ? "브랜드의 USP, 고객 페르소나, Pain Point, 솔루션�
 async function generateImageWithGemini(prompt: string): Promise<string> {
   const cleanPrompt = prompt.slice(0, 900);
 
-  // 1차: OpenAI DALL-E 3 - URL 직접 반환 (다운로드 없음)
+  // 1차: OpenAI DALL-E 2 (dall-e-3보다 프로젝트 제한 적음)
   if (process.env.OPENAI_API_KEY) {
-    try {
-      console.log("[image] DALL-E 3 생성 시도...");
-      const openai = getOpenAI();
-      const response = await openai.images.generate({
-        model: "dall-e-3",
-        prompt: cleanPrompt + " Photorealistic, high quality, no text.",
-        n: 1,
-        size: "1024x1024",
-      });
-      const imageUrl = response.data?.[0]?.url;
-      console.log("[image] DALL-E 3 결과:", imageUrl ? "성공" : "URL 없음");
-      if (imageUrl) return imageUrl; // URL 직접 반환
-    } catch (err: any) {
-      console.error("[image] DALL-E 3 실패:", err?.message?.slice(0, 150));
+    for (const model of ["dall-e-2"] as const) {
+      try {
+        console.log(`[image] ${model} 생성 시도...`);
+        const openai = getOpenAI();
+        const response = await openai.images.generate({
+          model,
+          prompt: cleanPrompt.slice(0, 400) + " Photorealistic, no text.",
+          n: 1,
+          size: "1024x1024",
+        });
+        const imageUrl = response.data?.[0]?.url;
+        if (imageUrl) {
+          console.log(`[image] ${model} 성공`);
+          return imageUrl;
+        }
+      } catch (err: any) {
+        console.error(`[image] ${model} 실패:`, err?.message?.slice(0, 100));
+      }
     }
-  } else {
-    console.warn("[image] OPENAI_API_KEY 없음");
   }
 
-  // 2차: Gemini 폴백
+  // 2차: Gemini (올바른 모델명)
   if (process.env.GEMINI_API_KEY) {
-    try {
-      console.log("[image] Gemini 생성 시도...");
-      const response = await getGemini().models.generateContent({
-        model: "gemini-2.0-flash-exp-image-generation",
-        contents: [{ role: "user", parts: [{ text: cleanPrompt }] }],
-        config: { responseModalities: [Modality.TEXT, Modality.IMAGE] },
-      });
-      const candidate = response.candidates?.[0];
-      const imagePart = candidate?.content?.parts?.find((part: any) => part.inlineData);
-      if (imagePart?.inlineData?.data) {
-        const mimeType = imagePart.inlineData.mimeType || "image/png";
-        console.log("[image] Gemini 성공");
-        return `data:${mimeType};base64,${imagePart.inlineData.data}`;
+    for (const model of ["gemini-2.0-flash-exp", "gemini-1.5-flash"]) {
+      try {
+        console.log(`[image] Gemini ${model} 시도...`);
+        const response = await getGemini().models.generateContent({
+          model,
+          contents: [{ role: "user", parts: [{ text: cleanPrompt + " Generate an image." }] }],
+          config: { responseModalities: [Modality.TEXT, Modality.IMAGE] },
+        });
+        const candidate = response.candidates?.[0];
+        const imagePart = candidate?.content?.parts?.find((part: any) => part.inlineData);
+        if (imagePart?.inlineData?.data) {
+          const mimeType = imagePart.inlineData.mimeType || "image/png";
+          console.log(`[image] Gemini ${model} 성공`);
+          return `data:${mimeType};base64,${imagePart.inlineData.data}`;
+        }
+      } catch (err: any) {
+        console.error(`[image] Gemini ${model} 실패:`, err?.message?.slice(0, 100));
       }
-    } catch (err: any) {
-      console.error("[image] Gemini 실패:", err?.message?.slice(0, 150));
     }
   }
 
