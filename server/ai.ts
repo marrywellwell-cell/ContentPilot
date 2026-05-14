@@ -226,7 +226,7 @@ async function generateImageWithGemini(prompt: string): Promise<string> {
     async () => {
       try {
         const response = await getGemini().models.generateContent({
-          model: "gemini-2.5-flash-image",
+          model: "gemini-2.0-flash-exp-image-generation",
           contents: [{ role: "user", parts: [{ text: prompt }] }],
           config: {
             responseModalities: [Modality.TEXT, Modality.IMAGE],
@@ -805,7 +805,7 @@ Style requirements:
 - Inspirational and uplifting mood`;
 
     const response = await getGemini().models.generateContent({
-      model: "gemini-2.5-flash-image",
+      model: "gemini-2.0-flash-exp-image-generation",
       contents: prompt,
       config: {
         responseModalities: [Modality.TEXT, Modality.IMAGE],

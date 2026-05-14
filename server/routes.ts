@@ -886,6 +886,11 @@ USP: ${brandAnalysis.usp}
       res.json(result);
     } catch (error: any) {
       console.error("Error generating content:", error);
+      // Gemini 할당량 초과 시 이미지 없이 텍스트만 반환
+      if (error?.message?.includes("429") || error?.message?.includes("RESOURCE_EXHAUSTED") || error?.message?.includes("quota")) {
+        console.log("Gemini quota exceeded - returning text-only content");
+        return res.status(500).json({ error: "이미지 생성 할당량 초과. 텍스트 콘텐츠는 정상 생성됩니다. 잠시 후 다시 시도하거나 Gemini API 키를 교체해주세요." });
+      }
       res.status(500).json({ error: error.message || "Failed to generate content" });
     }
   });
