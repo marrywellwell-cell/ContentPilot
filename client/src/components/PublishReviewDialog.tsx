@@ -8,6 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import {
   Instagram, Send, Clock, CheckCircle, Loader2,
   Image as ImageIcon, Hash, AlignLeft, Calendar,
@@ -36,6 +37,13 @@ export default function PublishReviewDialog({
   const [scheduleDate, setScheduleDate] = useState("");
   const [scheduleTime, setScheduleTime] = useState("09:00");
   const [publishResult, setPublishResult] = useState<any[] | null>(null);
+  const [currentSlide, setCurrentSlide] = useState(0);
+
+  const allImages = instagramImageUrls.length > 0 ? instagramImageUrls : [];
+  const totalSlides = Math.max(allImages.length, instagramSlides.length, 1);
+
+  const prevSlide = () => setCurrentSlide(i => Math.max(0, i - 1));
+  const nextSlide = () => setCurrentSlide(i => Math.min(totalSlides - 1, i + 1));
 
   // 즉시 발행
   const publishNowMutation = useMutation({
@@ -113,20 +121,67 @@ export default function PublishReviewDialog({
               </div>
             </div>
 
-            {/* 이미지 미리보기 */}
-            <div className="aspect-square bg-muted flex items-center justify-center relative">
-              {firstImage ? (
-                <img src={firstImage} alt="preview" className="w-full h-full object-cover" />
+            {/* 이미지 미리보기 + 슬라이드 네비게이션 */}
+            <div className="aspect-square bg-muted flex items-center justify-center relative overflow-hidden">
+              {allImages[currentSlide] ? (
+                <img
+                  src={allImages[currentSlide]}
+                  alt={`슬라이드 ${currentSlide + 1}`}
+                  className="w-full h-full object-cover transition-all duration-300"
+                />
               ) : (
                 <div className="flex flex-col items-center gap-2 text-muted-foreground">
-                  <ImageIcon className="w-12 h-12 opacity-30" />
-                  <p className="text-sm">이미지 없음</p>
+                  {instagramSlides[currentSlide] ? (
+                    <div className="bg-gradient-to-br from-purple-600 to-blue-600 w-full h-full flex items-center justify-center p-8">
+                      <p className="text-white text-xl font-bold text-center">{instagramSlides[currentSlide]}</p>
+                    </div>
+                  ) : (
+                    <>
+                      <ImageIcon className="w-12 h-12 opacity-30" />
+                      <p className="text-sm">이미지 없음</p>
+                    </>
+                  )}
                 </div>
               )}
-              {instagramImageUrls.length > 1 && (
-                <div className="absolute top-2 right-2 bg-black/60 text-white text-xs px-2 py-1 rounded-full">
-                  1 / {instagramImageUrls.length}
+
+              {/* 슬라이드 텍스트 오버레이 */}
+              {allImages[currentSlide] && instagramSlides[currentSlide] && (
+                <div className="absolute bottom-0 left-0 right-0 bg-black/50 p-3">
+                  <p className="text-white text-sm font-bold text-center">{instagramSlides[currentSlide]}</p>
                 </div>
+              )}
+
+              {/* 이전/다음 버튼 */}
+              {totalSlides > 1 && (
+                <>
+                  <button
+                    onClick={prevSlide}
+                    disabled={currentSlide === 0}
+                    className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white rounded-full w-8 h-8 flex items-center justify-center disabled:opacity-30 transition-all"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={nextSlide}
+                    disabled={currentSlide === totalSlides - 1}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white rounded-full w-8 h-8 flex items-center justify-center disabled:opacity-30 transition-all"
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                  {/* 슬라이드 인디케이터 */}
+                  <div className="absolute top-2 left-0 right-0 flex justify-center gap-1.5">
+                    {Array.from({ length: totalSlides }).map((_, i) => (
+                      <button
+                        key={i}
+                        onClick={() => setCurrentSlide(i)}
+                        className={`w-1.5 h-1.5 rounded-full transition-all ${i === currentSlide ? "bg-white w-4" : "bg-white/50"}`}
+                      />
+                    ))}
+                  </div>
+                  <div className="absolute top-2 right-2 bg-black/60 text-white text-xs px-2 py-1 rounded-full">
+                    {currentSlide + 1} / {totalSlides}
+                  </div>
+                </>
               )}
             </div>
 

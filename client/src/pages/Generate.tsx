@@ -233,14 +233,23 @@ export default function Generate() {
             <div className="lg:col-span-2 space-y-6">
               <div className="grid gap-6 md:grid-cols-2">
                 {generatedContent.platforms.includes("instagram") && (
-                  <InstagramPreview
-                    slides={generatedContent.instagramSlides || []}
-                    caption={generatedContent.instagramCaption || ""}
-                    hashtags={generatedContent.instagramHashtags || []}
-                    imageUrls={generatedContent.instagramImageUrls}
-                    onRegenerate={handleRegenerate}
-                    onUpdate={handleInstagramUpdate}
-                  />
+                  <div className="space-y-3">
+                    <InstagramPreview
+                      slides={generatedContent.instagramSlides || []}
+                      caption={generatedContent.instagramCaption || ""}
+                      hashtags={generatedContent.instagramHashtags || []}
+                      imageUrls={generatedContent.instagramImageUrls}
+                      onRegenerate={handleRegenerate}
+                      onUpdate={handleInstagramUpdate}
+                    />
+                    <Button
+                      onClick={() => setPublishOpen(true)}
+                      className="w-full gap-2 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white"
+                    >
+                      <Instagram className="w-4 h-4" />
+                      Instagram 발행 (검토 후 배포)
+                    </Button>
+                  </div>
                 )}
                 {generatedContent.platforms.includes("blog") && (
                   <BlogPreview
@@ -294,13 +303,6 @@ export default function Generate() {
             </Button>
             <Button onClick={() => setScheduleOpen(true)} data-testid="button-schedule-content" variant="outline">
               스케줄 등록
-            </Button>
-            <Button
-              onClick={() => setPublishOpen(true)}
-              className="gap-2 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white"
-            >
-              <Instagram className="w-4 h-4" />
-              Instagram 발행
             </Button>
           </div>
         </div>
