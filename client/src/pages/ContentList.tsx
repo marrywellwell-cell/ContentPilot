@@ -214,14 +214,26 @@ export default function ContentList() {
                   )}
                 </div>
               </CardContent>
-              <CardFooter className="p-4 pt-0 flex items-center justify-between">
+              <CardFooter className="p-4 pt-0 flex items-center justify-between gap-2">
                 <StatusBadge status={content.status || "draft"} />
-                {content.scheduledDate && (
-                  <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                    <Calendar className="h-3 w-3" />
-                    {new Date(content.scheduledDate).toLocaleDateString("ko-KR")}
-                  </div>
-                )}
+                <div className="flex items-center gap-2 ml-auto">
+                  {content.scheduledDate && (
+                    <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                      <Calendar className="h-3 w-3" />
+                      {new Date(content.scheduledDate).toLocaleDateString("ko-KR")}
+                    </div>
+                  )}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 px-2 text-destructive hover:text-destructive hover:bg-destructive/10"
+                    onClick={() => setDeleteId(content.id)}
+                    data-testid={`button-delete-footer-${content.id}`}
+                  >
+                    <Trash2 className="h-3.5 w-3.5 mr-1" />
+                    삭제
+                  </Button>
+                </div>
               </CardFooter>
             </Card>
           ))}
