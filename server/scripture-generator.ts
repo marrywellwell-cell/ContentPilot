@@ -173,10 +173,11 @@ async function generateScriptureImageFile(
     try {
       const openai = getOpenAI();
       const response = await openai.images.generate({
-        model: "gpt-image-1",
-        prompt: prompt + ", 1080x1080 square format, high quality, Instagram post style",
+        model: "dall-e-3",
+        prompt: prompt + " No text in image. High quality, photorealistic.",
         n: 1,
         size: "1024x1024",
+        response_format: "b64_json",
       });
       const b64 = response.data?.[0]?.b64_json;
       if (b64) {
@@ -194,7 +195,7 @@ async function generateScriptureImageFile(
       const { GoogleGenAI, Modality } = await import("@google/genai");
       const gemini = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
       const res = await gemini.models.generateContent({
-        model: "gemini-2.5-flash-preview-05-20",
+        model: "gemini-2.0-flash-exp-image-generation",
         contents: [{ role: "user", parts: [{ text: prompt }] }],
         config: { responseModalities: [Modality.TEXT, Modality.IMAGE] },
       });
