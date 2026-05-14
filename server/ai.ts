@@ -294,27 +294,26 @@ export async function generateImage(
   keyword: string,
   slideText?: string
 ): Promise<string> {
-  // Generate realistic photography-style image WITHOUT text
   const contentHint = slideText ? `Content context: "${slideText}"` : '';
-  
-  const prompt = `Create a stunning realistic photograph for "${keyword}":
-- Style: Professional photography, photorealistic, high-quality stock photo style
+
+  const prompt = `Create a stunning Korean-style realistic photograph for "${keyword}":
+- Style: Korean aesthetic photography, K-lifestyle, modern Korean visual style
+- Feature Korean people (Korean faces, Korean fashion, Korean style) when people are relevant
 - DO NOT include any text, letters, or typography in the image
-- Capture real-world scenes that represent "${keyword}":
-  * If food: professional food photography with appetizing dishes, fresh ingredients, beautiful plating
-  * If beauty/skincare: elegant product shots, lifestyle beauty moments, spa atmospheres
-  * If fitness/health: real gym scenes, outdoor exercise, healthy lifestyle moments
-  * If travel: breathtaking landscape photography, travel destinations, adventure moments
-  * If business: professional office environments, business meetings, success moments
-  * If technology: sleek device photography, modern tech setups, innovation scenes
-  * If lifestyle: cozy home interiors, daily life moments, aesthetic living spaces
+- Korean aesthetic details:
+  * If food: Korean cuisine (한식), Korean cafe aesthetic, Korean street food, beautiful Korean plating
+  * If beauty/skincare: K-beauty products, Korean skincare routine, Korean makeup aesthetic, dewy skin
+  * If fitness/health: Korean gym aesthetic, Korean outdoor exercise spots, healthy Korean lifestyle
+  * If travel: Korean landmarks (Seoul, Busan, Jeju), Korean streets, Korean nature scenery
+  * If business: Modern Korean office, Korean business professional style, K-startup aesthetic
+  * If lifestyle: Korean apartment interior, Korean cafe, Korean daily life aesthetic, cozy Korean home
+  * If wedding/couple: Korean couple style, Korean wedding aesthetic, Korean romantic settings
 - Photography characteristics:
-  * Natural or studio lighting
-  * Sharp focus with beautiful bokeh/depth of field
-  * Rich colors and professional color grading
-  * High resolution quality
-  * Bright, well-lit, and airy — no dark overlays or shadows
-- Overall mood: Authentic, professional, aspirational
+  * Bright, airy, soft Korean aesthetic lighting
+  * Clean composition with Korean visual sensibility
+  * Warm pastel tones or clean modern look
+  * High quality, Instagram-worthy Korean style
+- Overall mood: Korean aesthetic, modern, aspirational, clean
 ${contentHint}
 Topic: ${keyword}`;
 
@@ -329,47 +328,31 @@ export async function generateInstagramVisual(
   let prompt: string;
   
   if (isCover) {
-    // Cover slide - stunning realistic photography (NO text in image)
-    prompt = `Create a stunning realistic photograph for Instagram cover about "${keyword}":
-- Style: Professional photography, photorealistic, high-end stock photo quality
-- DO NOT include any text, letters, words, or typography in the image
-- Capture a beautiful real-world scene representing "${keyword}":
-  * If food: mouth-watering food photography, fresh ingredients, artistic plating, warm lighting
-  * If beauty/skincare: luxury cosmetic products, spa atmosphere, elegant textures, soft lighting
-  * If fitness/health: dynamic gym scene, outdoor exercise, athletic moments, energetic mood
-  * If travel: breathtaking landscape, iconic destinations, golden hour lighting, wanderlust vibes
-  * If business: sleek office environment, professional success moments, modern workspace
-  * If technology: cutting-edge devices, futuristic setups, clean tech aesthetics
-  * If lifestyle: cozy interiors, aesthetic daily moments, warm inviting spaces
-- Photography characteristics:
-  * Professional studio or natural lighting
-  * Sharp focus with beautiful depth of field
-  * Rich, vibrant colors with professional grading
-  * Bright and well-lit — clean, light background, no dark tones
-  * Eye-catching composition
-- Overall mood: Aspirational, professional, visually stunning
-- Size: Square format (1:1) for Instagram
+    prompt = `Create a stunning Korean-style Instagram cover photo for "${keyword}":
+- Korean aesthetic: K-lifestyle, modern Korean visual style, bright and clean
+- Feature Korean people (Korean faces, Korean fashion) when relevant to the topic
+- DO NOT include any text in the image
+- Korean aesthetic by topic:
+  * Food: Korean cuisine, Korean cafe, K-food aesthetic, beautiful Korean plating
+  * Beauty: K-beauty, Korean skincare, dewy skin aesthetic, Korean makeup style
+  * Fitness: Korean gym aesthetic, Korean outdoor lifestyle, healthy Korean look
+  * Travel: Seoul cityscape, Jeju island, Korean nature, Korean street scenes
+  * Business: Korean office, K-startup aesthetic, modern Korean workspace
+  * Lifestyle: Korean apartment, Korean cafe interior, cozy Korean daily life
+  * Wedding: Korean couple style, Korean wedding aesthetic, romantic Korean setting
+- Photo style: Bright, airy, soft Korean lighting, Instagram-worthy composition
+- Square format (1:1)
 Topic: ${keyword}`;
   } else {
-    // Content slide - realistic photography matching slide content (NO text in image)
-    prompt = `Create a realistic photograph for Instagram slide about "${slideHeadline}":
-- Style: Professional photography, photorealistic, authentic stock photo quality
-- DO NOT include any text, letters, words, or typography in the image
-- Capture a real-world scene that represents "${slideHeadline}":
-  * Show actual objects, products, or scenes related to "${slideHeadline}"
-  * If food-related: real food photography, ingredients, cooking process
-  * If beauty-related: actual cosmetic products, skincare routines, beauty moments
-  * If health-related: real exercise, wellness activities, healthy lifestyle
-  * If business-related: authentic office scenes, professional activities
-  * If tech-related: real devices, technology in use, modern setups
-  * If lifestyle-related: genuine home moments, daily activities, cozy spaces
-- Photography characteristics:
-  * Natural or professional lighting
-  * Clean composition with clear subject
-  * Bright, vibrant colors — light and airy, no dark tones or shadows
-  * Beautiful bokeh/depth of field where appropriate
-- Overall mood: Authentic, informative, professional
-- Size: Square format (1:1) for Instagram
+    prompt = `Create a Korean-style Instagram photo for "${slideHeadline}":
+- Korean aesthetic photography, K-lifestyle visual style
+- Feature Korean people when relevant to the topic
+- DO NOT include any text in the image
+- Match the topic "${slideHeadline}" with Korean context:
+  * Korean settings, Korean products, Korean people, Korean aesthetic
+  * Bright and clean Korean visual style
+  * Warm or pastel tones typical of Korean Instagram aesthetic
+- Square format (1:1)
 Slide topic: ${slideHeadline}
 Main theme: ${keyword}`;
   }

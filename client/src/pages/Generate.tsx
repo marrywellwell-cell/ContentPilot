@@ -5,10 +5,11 @@ import { InstagramPreview } from "@/components/InstagramPreview";
 import { BlogPreview } from "@/components/BlogPreview";
 import { ScheduleDialog } from "@/components/ScheduleDialog";
 import { ContentChatEditor } from "@/components/ContentChatEditor";
+import PublishReviewDialog from "@/components/PublishReviewDialog";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, FileText, MessageSquare } from "lucide-react";
+import { Loader2, FileText, MessageSquare, Instagram, Send } from "lucide-react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { ContentSet } from "@shared/schema";
@@ -43,6 +44,7 @@ export default function Generate() {
   const [generatedContent, setGeneratedContent] = useState<GeneratedContent | null>(null);
   const [savedContentSetId, setSavedContentSetId] = useState<string | null>(null);
   const [scheduleOpen, setScheduleOpen] = useState(false);
+  const [publishOpen, setPublishOpen] = useState(false);
   const { toast } = useToast();
   
   const urlParams = new URLSearchParams(searchString);
@@ -290,9 +292,18 @@ export default function Generate() {
             >
               새로 생성
             </Button>
-            <Button onClick={() => setScheduleOpen(true)} data-testid="button-schedule-content">
+            <Button onClick={() => setScheduleOpen(true)} data-testid="button-schedule-content" variant="outline">
               스케줄 등록
             </Button>
+            {generatedContent?.platforms?.includes("instagram") && savedContentSetId && (
+              <Button
+                onClick={() => setPublishOpen(true)}
+                className="gap-2 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white"
+              >
+                <Instagram className="w-4 h-4" />
+                Instagram 발행
+              </Button>
+            )}
           </div>
         </div>
       )}
@@ -303,6 +314,20 @@ export default function Generate() {
         platforms={generatedContent?.platforms || []}
         onSchedule={handleSchedule}
       />
+
+      {savedContentSetId && generatedContent && (
+        <PublishReviewDialog
+          open={publishOpen}
+          onOpenChange={setPublishOpen}
+          contentSetId={savedContentSetId}
+          keyword={generatedContent.keyword}
+          instagramSlides={generatedContent.instagramSlides}
+          instagramCaption={generatedContent.instagramCaption}
+          instagramHashtags={generatedContent.instagramHashtags}
+          instagramImageUrls={generatedContent.instagramImageUrls}
+          platforms={generatedContent.platforms}
+        />
+      )}
     </div>
   );
 }
