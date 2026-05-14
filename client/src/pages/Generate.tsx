@@ -96,9 +96,9 @@ export default function Generate() {
     },
     onSuccess: async (data) => {
       setGeneratedContent(data);
-      
-      // Auto-save content set as draft
-      const saved = await saveContentMutation.mutateAsync({
+
+      // Auto-save content set as draft — DB 연결 끊김 대비 최대 3회 재시도
+      const savePayload = {
         keyword: data.keyword,
         platforms: data.platforms,
         instagramSlides: data.instagramSlides,
@@ -116,13 +116,29 @@ export default function Generate() {
         blogInternalLinkTopics: data.blogInternalLinkTopics,
         blogHashtags: data.blogHashtags,
         status: "draft",
-      });
-      
-      setSavedContentSetId((saved as any).id);
-      
+      };
+
+      let saved: any = null;
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+          saved = await saveContentMutation.mutateAsync(savePayload);
+          break;
+        } catch (err) {
+          if (attempt < 3) {
+            await new Promise((r) => setTimeout(r, 2000 * attempt));
+          }
+        }
+      }
+
+      if (saved?.id) {
+        setSavedContentSetId(saved.id);
+      }
+
       toast({
         title: "콘텐츠 생성 완료!",
-        description: "아래에서 콘텐츠를 검토하고 AI로 수정할 수 있습니다.",
+        description: saved?.id
+          ? "아래에서 콘텐츠를 검토하고 AI로 수정할 수 있습니다."
+          : "생성은 완료됐으나 저장에 실패했습니다. 발행 전 페이지를 새로고침해주세요.",
       });
     },
     onError: (error: Error) => {

@@ -48,6 +48,7 @@ export default function PublishReviewDialog({
   // 즉시 발행
   const publishNowMutation = useMutation({
     mutationFn: async () => {
+      if (!contentSetId) throw new Error("콘텐츠가 아직 저장되지 않았습니다. 잠시 후 다시 시도해주세요.");
       return apiRequest(`/api/publish/${contentSetId}`, {
         method: "POST",
         body: JSON.stringify({ platforms }),

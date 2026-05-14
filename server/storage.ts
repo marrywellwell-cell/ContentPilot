@@ -698,18 +698,37 @@ export class PostgresStorage implements IStorage {
     this.pool = new Pool({
       connectionString: process.env.DATABASE_URL,
       ssl: { rejectUnauthorized: false },
-      max: 10,
-      idleTimeoutMillis: 30000,
-      connectionTimeoutMillis: 10000,
+      max: 5,
+      min: 1,
+      idleTimeoutMillis: 60000,
+      connectionTimeoutMillis: 15000,
       keepAlive: true,
+      keepAliveInitialDelayMillis: 10000,
     });
 
-    // 연결 에러 시 자동 복구
     this.pool.on("error", (err) => {
       console.error("[DB Pool] 연결 오류 (자동 복구됨):", err.message);
     });
 
     this.db = drizzle(this.pool);
+  }
+
+  // DB 쿼리 재시도 래퍼 — 연결 끊김 시 1회 재시도
+  private async withRetry<T>(fn: () => Promise<T>): Promise<T> {
+    try {
+      return await fn();
+    } catch (err: any) {
+      const isConnErr =
+        err?.message?.includes("Connection terminated") ||
+        err?.message?.includes("connection") ||
+        err?.code === "57P01";
+      if (isConnErr) {
+        console.warn("[DB] 연결 끊김 감지, 1초 후 재시도...");
+        await new Promise((r) => setTimeout(r, 1000));
+        return await fn();
+      }
+      throw err;
+    }
   }
 
   async getUser(id: string): Promise<User | undefined> {
@@ -786,13 +805,17 @@ export class PostgresStorage implements IStorage {
   }
 
   async createContentSet(insertContentSet: InsertContentSet): Promise<ContentSet> {
-    const result = await this.db.insert(contentSets).values(insertContentSet).returning();
-    return result[0];
+    return this.withRetry(async () => {
+      const result = await this.db.insert(contentSets).values(insertContentSet).returning();
+      return result[0];
+    });
   }
 
   async getContentSet(id: string): Promise<ContentSet | undefined> {
-    const result = await this.db.select().from(contentSets).where(eq(contentSets.id, id));
-    return result[0];
+    return this.withRetry(async () => {
+      const result = await this.db.select().from(contentSets).where(eq(contentSets.id, id));
+      return result[0];
+    });
   }
 
   async listContentSets(userId?: string): Promise<ContentSet[]> {
