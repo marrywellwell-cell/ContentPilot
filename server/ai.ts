@@ -13,7 +13,18 @@ function getOpenAI() {
 // Gemini for image generation (lazy initialization)
 function getGemini() {
   if (!process.env.GEMINI_API_KEY) throw new Error("GEMINI_API_KEY 환경변수가 설정되지 않았습니다.");
-  return new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+  return new GoogleGenAI({
+    apiKey: process.env.GEMINI_API_KEY,
+    httpOptions: { apiVersion: "v1beta" },
+  });
+}
+
+function getGeminiAlpha() {
+  if (!process.env.GEMINI_API_KEY) throw new Error("GEMINI_API_KEY 미설정");
+  return new GoogleGenAI({
+    apiKey: process.env.GEMINI_API_KEY,
+    httpOptions: { apiVersion: "v1alpha" },
+  });
 }
 
 // Helper function to check if error is rate limit or quota violation
@@ -247,14 +258,19 @@ async function generateImageWithGemini(prompt: string): Promise<string> {
     }
   }
 
-  // 2차: Gemini (올바른 모델명)
+  // 2차: Gemini (v1alpha + 이미지 생성 전용 모델)
   if (process.env.GEMINI_API_KEY) {
-    for (const model of ["gemini-2.0-flash-exp", "gemini-1.5-flash"]) {
+    const geminiModels = [
+      { client: getGeminiAlpha(), model: "gemini-2.0-flash-preview-image-generation" },
+      { client: getGeminiAlpha(), model: "gemini-2.0-flash-exp-image-generation" },
+      { client: getGemini(), model: "gemini-2.0-flash-preview-image-generation" },
+    ];
+    for (const { client, model } of geminiModels) {
       try {
         console.log(`[image] Gemini ${model} 시도...`);
-        const response = await getGemini().models.generateContent({
+        const response = await client.models.generateContent({
           model,
-          contents: [{ role: "user", parts: [{ text: cleanPrompt + " Generate an image." }] }],
+          contents: [{ role: "user", parts: [{ text: cleanPrompt }] }],
           config: { responseModalities: [Modality.TEXT, Modality.IMAGE] },
         });
         const candidate = response.candidates?.[0];
@@ -265,7 +281,7 @@ async function generateImageWithGemini(prompt: string): Promise<string> {
           return `data:${mimeType};base64,${imagePart.inlineData.data}`;
         }
       } catch (err: any) {
-        console.error(`[image] Gemini ${model} 실패:`, err?.message?.slice(0, 100));
+        console.error(`[image] Gemini ${model} 실패:`, err?.message?.slice(0, 80));
       }
     }
   }
