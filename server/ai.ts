@@ -220,55 +220,53 @@ ${brandContext ? "브랜드의 USP, 고객 페르소나, Pain Point, 솔루션�
 }
 
 // Generate image using OpenAI DALL-E 3 (primary) → Gemini (fallback)
-// Returns base64 data URL
+// Returns image URL or base64 data URL
 async function generateImageWithGemini(prompt: string): Promise<string> {
-  // 1차: OpenAI DALL-E 3 (URL 방식 → 다운로드 → base64)
+  const cleanPrompt = prompt.slice(0, 900);
+
+  // 1차: OpenAI DALL-E 3 - URL 직접 반환 (다운로드 없음)
   if (process.env.OPENAI_API_KEY) {
     try {
+      console.log("[image] DALL-E 3 생성 시도...");
       const openai = getOpenAI();
       const response = await openai.images.generate({
         model: "dall-e-3",
-        prompt: prompt.slice(0, 1000) + " Photorealistic, high quality, no text overlay.",
+        prompt: cleanPrompt + " Photorealistic, high quality, no text.",
         n: 1,
         size: "1024x1024",
       });
       const imageUrl = response.data?.[0]?.url;
-      if (imageUrl) {
-        // URL에서 이미지 다운로드 후 base64 변환
-        const imgRes = await fetch(imageUrl);
-        if (imgRes.ok) {
-          const buffer = await imgRes.arrayBuffer();
-          const b64 = Buffer.from(buffer).toString("base64");
-          return `data:image/png;base64,${b64}`;
-        }
-      }
+      console.log("[image] DALL-E 3 결과:", imageUrl ? "성공" : "URL 없음");
+      if (imageUrl) return imageUrl; // URL 직접 반환
     } catch (err: any) {
-      console.warn("DALL-E 이미지 생성 실패:", err?.message?.slice(0, 100));
+      console.error("[image] DALL-E 3 실패:", err?.message?.slice(0, 150));
     }
+  } else {
+    console.warn("[image] OPENAI_API_KEY 없음");
   }
 
   // 2차: Gemini 폴백
   if (process.env.GEMINI_API_KEY) {
     try {
+      console.log("[image] Gemini 생성 시도...");
       const response = await getGemini().models.generateContent({
         model: "gemini-2.0-flash-exp-image-generation",
-        contents: [{ role: "user", parts: [{ text: prompt }] }],
-        config: {
-          responseModalities: [Modality.TEXT, Modality.IMAGE],
-        },
+        contents: [{ role: "user", parts: [{ text: cleanPrompt }] }],
+        config: { responseModalities: [Modality.TEXT, Modality.IMAGE] },
       });
       const candidate = response.candidates?.[0];
       const imagePart = candidate?.content?.parts?.find((part: any) => part.inlineData);
       if (imagePart?.inlineData?.data) {
         const mimeType = imagePart.inlineData.mimeType || "image/png";
+        console.log("[image] Gemini 성공");
         return `data:${mimeType};base64,${imagePart.inlineData.data}`;
       }
     } catch (err: any) {
-      console.warn("Gemini 이미지 생성 실패:", err?.message?.slice(0, 80));
+      console.error("[image] Gemini 실패:", err?.message?.slice(0, 150));
     }
   }
 
-  throw new Error("이미지 생성 실패 (DALL-E/Gemini 모두 실패)");
+  throw new Error("이미지 생성 실패");
 }
 
 export async function generateImage(
