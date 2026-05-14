@@ -295,15 +295,13 @@ export default function Generate() {
             <Button onClick={() => setScheduleOpen(true)} data-testid="button-schedule-content" variant="outline">
               스케줄 등록
             </Button>
-            {generatedContent?.platforms?.includes("instagram") && savedContentSetId && (
-              <Button
-                onClick={() => setPublishOpen(true)}
-                className="gap-2 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white"
-              >
-                <Instagram className="w-4 h-4" />
-                Instagram 발행
-              </Button>
-            )}
+            <Button
+              onClick={() => setPublishOpen(true)}
+              className="gap-2 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white"
+            >
+              <Instagram className="w-4 h-4" />
+              Instagram 발행
+            </Button>
           </div>
         </div>
       )}
@@ -315,11 +313,11 @@ export default function Generate() {
         onSchedule={handleSchedule}
       />
 
-      {savedContentSetId && generatedContent && (
+      {generatedContent && (
         <PublishReviewDialog
           open={publishOpen}
           onOpenChange={setPublishOpen}
-          contentSetId={savedContentSetId}
+          contentSetId={savedContentSetId || ""}
           keyword={generatedContent.keyword}
           instagramSlides={generatedContent.instagramSlides}
           instagramCaption={generatedContent.instagramCaption}
