@@ -818,10 +818,15 @@ USP: ${brandAnalysis.usp}
             })
           );
           
-          const blogImageUrls = await Promise.all(imagePromises);
+          let blogImageUrls: string[] = [];
+          try {
+            blogImageUrls = await Promise.all(imagePromises);
+          } catch (imgErr: any) {
+            console.warn("블로그 이미지 생성 실패 (텍스트만 반환):", imgErr?.message?.slice(0, 80));
+          }
           result.blogImageUrls = blogImageUrls;
           sharedImages = blogImageUrls;
-          
+
           // Build with inline images
           const blogHtml = buildBlogWithInlineImages(sections, blogImageUrls);
           
@@ -874,11 +879,14 @@ USP: ${brandAnalysis.usp}
           console.log("Generating all Instagram images");
           const imagePromises = result.instagramSlides.map((slideHeadline: string, index: number) =>
             limit(async () => {
-              return await generateInstagramVisual(keyword, slideHeadline, index === 0);
+              try {
+                return await generateInstagramVisual(keyword, slideHeadline, index === 0);
+              } catch {
+                return null;
+              }
             })
           );
-          
-          const imageUrls = await Promise.all(imagePromises);
+          const imageUrls = (await Promise.all(imagePromises)).filter(Boolean);
           result.instagramImageUrls = imageUrls;
         }
       }
