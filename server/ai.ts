@@ -243,7 +243,10 @@ ${brandContext ? "브랜드의 USP, 고객 페르소나, Pain Point, 솔루션�
 
 // Generate image — gpt-image-1-mini → gpt-image-1.5 → Gemini
 async function generateImageWithGemini(prompt: string): Promise<string> {
-  const cleanPrompt = (prompt.slice(0, 800) + " Photorealistic, high quality, no text in image.").trim();
+  // 사람 금지 지시를 맨 앞에 고정하고 나머지 프롬프트를 붙임
+  const noPeoplePrefix = "STRICT RULE: absolutely NO people, NO humans, NO faces, NO body parts, NO persons in the image. ";
+  const suffix = " Photorealistic, high quality, no text in image.";
+  const cleanPrompt = (noPeoplePrefix + prompt.slice(0, 700) + suffix).trim();
 
   // 1차: OpenAI gpt-image-1-mini / gpt-image-1.5
   if (process.env.OPENAI_API_KEY) {
@@ -253,7 +256,7 @@ async function generateImageWithGemini(prompt: string): Promise<string> {
         const openai = getOpenAI();
         const response = await openai.images.generate({
           model,
-          prompt: cleanPrompt.slice(0, 900),
+          prompt: cleanPrompt.slice(0, 1000),
           n: 1,
           size: "1024x1024",
         } as any);
@@ -307,9 +310,10 @@ export async function generateImage(
 ): Promise<string> {
   const contentHint = slideText ? `Content context: "${slideText}"` : '';
 
-  const prompt = `Create a stunning Korean-style realistic photograph for "${keyword}":
+  const prompt = `NO people. NO humans. NO faces. NO body parts. Objects and nature only.
+Create a stunning Korean-style photograph for "${keyword}":
 - Style: Korean aesthetic photography, K-lifestyle, modern Korean visual style
-- NO people, NO human faces, NO persons — objects, products, food, nature, and scenes ONLY
+- Subject: objects, products, food, nature, scenery — absolutely no people
 - DO NOT include any text, letters, or typography in the image
 - Korean aesthetic details:
   * If food: Korean cuisine (한식), Korean cafe aesthetic, Korean street food, beautiful Korean plating
@@ -339,9 +343,10 @@ export async function generateInstagramVisual(
   let prompt: string;
   
   if (isCover) {
-    prompt = `Create a stunning Korean-style Instagram cover photo for "${keyword}":
+    prompt = `NO people. NO humans. NO faces. NO body parts. Objects and scenery only.
+Create a stunning Korean-style Instagram cover photo for "${keyword}":
 - Korean aesthetic: K-lifestyle, modern Korean visual style, bright and clean
-- NO people, NO human faces, NO persons — objects, food, products, scenery ONLY
+- Subject: objects, food, products, scenery — absolutely no people
 - DO NOT include any text in the image
 - Korean aesthetic by topic:
   * Food: Korean cuisine, Korean cafe, K-food aesthetic, beautiful Korean plating
@@ -355,9 +360,10 @@ export async function generateInstagramVisual(
 - Square format (1:1)
 Topic: ${keyword}`;
   } else {
-    prompt = `Create a Korean-style Instagram photo for "${slideHeadline}":
+    prompt = `NO people. NO humans. NO faces. NO body parts. Objects and scenery only.
+Create a Korean-style Instagram photo for "${slideHeadline}":
 - Korean aesthetic photography, K-lifestyle visual style
-- NO people, NO human faces, NO persons — objects, products, scenery ONLY
+- Subject: objects, products, scenery — absolutely no people
 - DO NOT include any text in the image
 - Match the topic "${slideHeadline}" with Korean context:
   * Korean settings, Korean products, Korean aesthetic objects
@@ -379,8 +385,10 @@ export async function generateBlogInfographic(
   // Realistic photography for blog sections - NO text in image
   const contentHint = sectionSummary ? `Context: ${sectionSummary.substring(0, 100)}` : '';
   
-  const prompt = `Create a realistic photograph for blog section about "${sectionHeading}":
+  const prompt = `NO people. NO humans. NO faces. NO body parts. Objects and environments only.
+Create a realistic photograph for blog section about "${sectionHeading}":
 - Style: Professional photography, photorealistic, editorial/stock photo quality
+- Subject: objects, environments, nature, products — absolutely no people
 - DO NOT include any text, letters, words, or typography in the image
 - Capture a real-world scene representing "${sectionHeading}":
   * If food-related: professional food photography, ingredients, cooking scenes, plated dishes
