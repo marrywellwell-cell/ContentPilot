@@ -9,6 +9,78 @@
 
 import { storage } from "./storage";
 import type { ContentSet, PlatformConnection } from "@shared/schema";
+import { createCanvas, loadImage } from "canvas";
+import * as path from "path";
+
+// 폰트 등록 (NotoSansKR)
+try {
+  const { registerFont } = require("canvas");
+  const fontDir = path.join(process.cwd(), "server", "fonts");
+  registerFont(path.join(fontDir, "NotoSansKR-Bold.ttf"), { family: "NotoSansKR", weight: "bold" });
+  registerFont(path.join(fontDir, "NotoSansKR-Regular.ttf"), { family: "NotoSansKR" });
+} catch (e) {
+  console.warn("[publisher] 폰트 등록 실패 (기본 폰트 사용):", (e as any).message);
+}
+
+// 이미지 위에 슬라이드 텍스트를 합성해 base64로 반환
+async function compositeTextOnImage(
+  imageDataUrl: string,
+  text: string,
+  isCover: boolean
+): Promise<string> {
+  try {
+    const img = await loadImage(imageDataUrl);
+    const SIZE = 1080;
+    const canvas = createCanvas(SIZE, SIZE);
+    const ctx = canvas.getContext("2d");
+
+    // 원본 이미지 그리기 (1:1 크롭)
+    const scale = Math.max(SIZE / img.width, SIZE / img.height);
+    const sw = SIZE / scale;
+    const sh = SIZE / scale;
+    const sx = (img.width - sw) / 2;
+    const sy = (img.height - sh) / 2;
+    ctx.drawImage(img, sx, sy, sw, sh, 0, 0, SIZE, SIZE);
+
+    // 하단 그라데이션 오버레이
+    const grad = ctx.createLinearGradient(0, SIZE * 0.45, 0, SIZE);
+    grad.addColorStop(0, "rgba(0,0,0,0)");
+    grad.addColorStop(1, "rgba(0,0,0,0.72)");
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, 0, SIZE, SIZE);
+
+    // 텍스트 렌더링
+    const lines = text.split("\n").filter((l) => l.trim());
+    const titleLine = lines[0] || "";
+    const bodyLines = lines.slice(1).filter((l) => l.trim());
+
+    // 제목
+    const titleSize = isCover ? 72 : 60;
+    ctx.font = `bold ${titleSize}px NotoSansKR, sans-serif`;
+    ctx.fillStyle = "#ffffff";
+    ctx.textAlign = "center";
+    ctx.shadowColor = "rgba(0,0,0,0.6)";
+    ctx.shadowBlur = 8;
+    ctx.shadowOffsetY = 2;
+
+    const startY = bodyLines.length > 0 ? SIZE * 0.55 : SIZE * 0.62;
+    ctx.fillText(titleLine, SIZE / 2, startY, SIZE * 0.88);
+
+    // 본문 불릿 라인
+    if (bodyLines.length > 0) {
+      ctx.font = `38px NotoSansKR, sans-serif`;
+      ctx.shadowBlur = 4;
+      bodyLines.forEach((line, i) => {
+        ctx.fillText(line, SIZE / 2, startY + titleSize * 1.2 + i * 52, SIZE * 0.85);
+      });
+    }
+
+    return canvas.toDataURL("image/jpeg", 0.92);
+  } catch (err) {
+    console.error("[publisher] 텍스트 합성 실패, 원본 이미지 사용:", (err as any).message);
+    return imageDataUrl;
+  }
+}
 
 // ─── 타입 ─────────────────────────────────────────────────────────────────────
 
@@ -159,14 +231,25 @@ export async function publishToInstagram(
     .join("\n\n");
 
   try {
-    // 공개 URL이 아닌 base64 이미지는 임시 서버 URL로 변환
-    const resolvedUrls = imageUrls.map((url) => {
-      if (url.startsWith("data:")) {
-        const id = storeTempImage(url);
-        return `${baseUrl}/api/images/temp/${id}`;
-      }
-      return url;
-    });
+    // 슬라이드 텍스트를 이미지에 합성 후 임시 URL로 변환
+    const resolvedUrls = await Promise.all(
+      imageUrls.map(async (url, i) => {
+        const slideText = slides[i] || "";
+        const isCover = i === 0;
+        if (slideText) {
+          // 텍스트 합성 (원본이 http URL이면 그대로 loadImage가 처리)
+          const composited = await compositeTextOnImage(url, slideText, isCover);
+          const id = storeTempImage(composited);
+          return `${baseUrl}/api/images/temp/${id}`;
+        }
+        // 텍스트 없으면 원본 그대로
+        if (url.startsWith("data:")) {
+          const id = storeTempImage(url);
+          return `${baseUrl}/api/images/temp/${id}`;
+        }
+        return url;
+      })
+    );
 
     let mediaId: string;
 

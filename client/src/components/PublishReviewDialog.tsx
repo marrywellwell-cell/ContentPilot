@@ -1,17 +1,17 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
 import { useMutation } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/queryClient";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { ChevronLeft, ChevronRight, Edit2, Check, X } from "lucide-react";
 import {
   Instagram, Send, Clock, CheckCircle, Loader2,
-  Image as ImageIcon, Hash, AlignLeft, Calendar,
+  Image as ImageIcon, Hash, AlignLeft, Calendar, Save,
 } from "lucide-react";
 
 interface PublishReviewDialogProps {
@@ -39,11 +39,50 @@ export default function PublishReviewDialog({
   const [publishResult, setPublishResult] = useState<any[] | null>(null);
   const [currentSlide, setCurrentSlide] = useState(0);
 
+  // 편집 상태
+  const [isEditing, setIsEditing] = useState(false);
+  const [editSlides, setEditSlides] = useState<string[]>(instagramSlides);
+  const [editCaption, setEditCaption] = useState(instagramCaption);
+  const [editHashtags, setEditHashtags] = useState(instagramHashtags.map(h => `#${h.replace(/^#/, "")}`).join(" "));
+
+  // props 변경 시 편집 상태 동기화
+  useEffect(() => {
+    setEditSlides(instagramSlides);
+    setEditCaption(instagramCaption);
+    setEditHashtags(instagramHashtags.map(h => `#${h.replace(/^#/, "")}`).join(" "));
+  }, [instagramSlides, instagramCaption, instagramHashtags]);
+
   const allImages = instagramImageUrls.length > 0 ? instagramImageUrls : [];
-  const totalSlides = Math.max(allImages.length, instagramSlides.length, 1);
+  const totalSlides = Math.max(allImages.length, editSlides.length, 1);
 
   const prevSlide = () => setCurrentSlide(i => Math.max(0, i - 1));
   const nextSlide = () => setCurrentSlide(i => Math.min(totalSlides - 1, i + 1));
+
+  // 편집 내용 DB 저장
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      const hashtagArray = editHashtags
+        .split(/[\s,]+/)
+        .map(t => t.replace(/^#/, "").trim())
+        .filter(Boolean);
+      return apiRequest(`/api/content-sets/${contentSetId}`, {
+        method: "PATCH",
+        body: JSON.stringify({
+          instagramSlides: editSlides,
+          instagramCaption: editCaption,
+          instagramHashtags: hashtagArray,
+        }),
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/content-sets"] });
+      setIsEditing(false);
+      toast({ title: "저장 완료", description: "발행 전 수정 내용이 저장되었습니다." });
+    },
+    onError: (e: Error) => {
+      toast({ title: "저장 실패", description: e.message, variant: "destructive" });
+    },
+  });
 
   // 즉시 발행
   const publishNowMutation = useMutation({
@@ -92,8 +131,7 @@ export default function PublishReviewDialog({
     },
   });
 
-  const firstImage = instagramImageUrls[0];
-  const hashtagText = instagramHashtags.map(h => `#${h.replace(/^#/, "")}`).join(" ");
+  const displayHashtags = editHashtags;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -104,25 +142,47 @@ export default function PublishReviewDialog({
             Instagram 발행 검토
           </DialogTitle>
           <DialogDescription>
-            발행 전 콘텐츠를 최종 확인하세요.
+            발행 전 내용을 확인하고 수정하세요. 캡션 줄바꿈은 그대로 발행됩니다.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-5">
+        <div className="space-y-4">
           {/* 콘텐츠 미리보기 */}
           <div className="border rounded-xl overflow-hidden bg-white dark:bg-zinc-900">
             {/* Instagram 헤더 */}
-            <div className="flex items-center gap-2 p-3 border-b">
-              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
-                <Instagram className="w-4 h-4 text-white" />
+            <div className="flex items-center justify-between p-3 border-b">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
+                  <Instagram className="w-4 h-4 text-white" />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold">marrywellonoff</p>
+                  <p className="text-xs text-muted-foreground">Instagram Business</p>
+                </div>
               </div>
-              <div>
-                <p className="text-sm font-semibold">marrywellonoff</p>
-                <p className="text-xs text-muted-foreground">Instagram Business</p>
-              </div>
+              {/* 편집 토글 */}
+              {!publishResult && (
+                <div className="flex gap-1.5">
+                  {isEditing ? (
+                    <>
+                      <Button size="sm" variant="ghost" onClick={() => { setIsEditing(false); setEditSlides(instagramSlides); setEditCaption(instagramCaption); setEditHashtags(instagramHashtags.map(h=>`#${h.replace(/^#/,"")}`).join(" ")); }}>
+                        <X className="w-3.5 h-3.5 mr-1" />취소
+                      </Button>
+                      <Button size="sm" onClick={() => saveMutation.mutate()} disabled={saveMutation.isPending}>
+                        {saveMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1" /> : <Save className="w-3.5 h-3.5 mr-1" />}
+                        저장
+                      </Button>
+                    </>
+                  ) : (
+                    <Button size="sm" variant="outline" onClick={() => setIsEditing(true)}>
+                      <Edit2 className="w-3.5 h-3.5 mr-1" />수정
+                    </Button>
+                  )}
+                </div>
+              )}
             </div>
 
-            {/* 이미지 미리보기 + 슬라이드 네비게이션 */}
+            {/* 이미지 + 슬라이드 네비게이션 */}
             <div className="aspect-square bg-muted flex items-center justify-center relative overflow-hidden">
               {allImages[currentSlide] ? (
                 <img
@@ -131,52 +191,44 @@ export default function PublishReviewDialog({
                   className="w-full h-full object-cover transition-all duration-300"
                 />
               ) : (
-                <div className="flex flex-col items-center gap-2 text-muted-foreground">
-                  {instagramSlides[currentSlide] ? (
+                <div className="flex flex-col items-center gap-2 text-muted-foreground w-full h-full">
+                  {editSlides[currentSlide] ? (
                     <div className="bg-gradient-to-br from-purple-600 to-blue-600 w-full h-full flex items-center justify-center p-8">
-                      <p className="text-white text-xl font-bold text-center">{instagramSlides[currentSlide]}</p>
+                      <p className="text-white text-xl font-bold text-center whitespace-pre-line">{editSlides[currentSlide]}</p>
                     </div>
                   ) : (
-                    <>
+                    <div className="flex flex-col items-center justify-center h-full gap-2">
                       <ImageIcon className="w-12 h-12 opacity-30" />
                       <p className="text-sm">이미지 없음</p>
-                    </>
+                    </div>
                   )}
                 </div>
               )}
 
-              {/* 슬라이드 텍스트 오버레이 */}
-              {allImages[currentSlide] && instagramSlides[currentSlide] && (
-                <div className="absolute bottom-0 left-0 right-0 bg-black/50 p-3">
-                  <p className="text-white text-sm font-bold text-center">{instagramSlides[currentSlide]}</p>
+              {/* 슬라이드 텍스트 오버레이 (이미지 위) */}
+              {allImages[currentSlide] && editSlides[currentSlide] && (
+                <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-4">
+                  <p className="text-white text-sm font-bold text-center whitespace-pre-line leading-relaxed">
+                    {editSlides[currentSlide]}
+                  </p>
                 </div>
               )}
 
               {/* 이전/다음 버튼 */}
               {totalSlides > 1 && (
                 <>
-                  <button
-                    onClick={prevSlide}
-                    disabled={currentSlide === 0}
-                    className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white rounded-full w-8 h-8 flex items-center justify-center disabled:opacity-30 transition-all"
-                  >
+                  <button onClick={prevSlide} disabled={currentSlide === 0}
+                    className="absolute left-2 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white rounded-full w-8 h-8 flex items-center justify-center disabled:opacity-30 transition-all">
                     <ChevronLeft className="w-4 h-4" />
                   </button>
-                  <button
-                    onClick={nextSlide}
-                    disabled={currentSlide === totalSlides - 1}
-                    className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white rounded-full w-8 h-8 flex items-center justify-center disabled:opacity-30 transition-all"
-                  >
+                  <button onClick={nextSlide} disabled={currentSlide === totalSlides - 1}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white rounded-full w-8 h-8 flex items-center justify-center disabled:opacity-30 transition-all">
                     <ChevronRight className="w-4 h-4" />
                   </button>
-                  {/* 슬라이드 인디케이터 */}
                   <div className="absolute top-2 left-0 right-0 flex justify-center gap-1.5">
                     {Array.from({ length: totalSlides }).map((_, i) => (
-                      <button
-                        key={i}
-                        onClick={() => setCurrentSlide(i)}
-                        className={`w-1.5 h-1.5 rounded-full transition-all ${i === currentSlide ? "bg-white w-4" : "bg-white/50"}`}
-                      />
+                      <button key={i} onClick={() => setCurrentSlide(i)}
+                        className={`h-1.5 rounded-full transition-all ${i === currentSlide ? "bg-white w-4" : "bg-white/50 w-1.5"}`} />
                     ))}
                   </div>
                   <div className="absolute top-2 right-2 bg-black/60 text-white text-xs px-2 py-1 rounded-full">
@@ -186,28 +238,78 @@ export default function PublishReviewDialog({
               )}
             </div>
 
-            {/* 슬라이드 텍스트 */}
-            {instagramSlides.length > 0 && (
-              <div className="flex gap-1.5 p-3 overflow-x-auto border-b">
-                {instagramSlides.map((slide, i) => (
-                  <div key={i} className="flex-shrink-0 w-12 h-12 rounded bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center">
-                    <p className="text-white text-[8px] font-bold text-center leading-tight px-1 line-clamp-3">{slide}</p>
-                  </div>
-                ))}
+            {/* 슬라이드 텍스트 편집 영역 */}
+            <div className="p-3 border-b space-y-2">
+              <div className="flex items-center gap-1 mb-1">
+                <span className="text-xs font-medium text-muted-foreground">슬라이드 {currentSlide + 1} 텍스트</span>
+                <span className="text-xs text-muted-foreground">(이미지에 합성되어 발행됩니다)</span>
               </div>
-            )}
-
-            {/* 캡션 */}
-            <div className="p-3 space-y-2">
-              <div className="flex items-start gap-1">
-                <AlignLeft className="w-4 h-4 mt-0.5 flex-shrink-0 text-muted-foreground" />
-                <p className="text-sm line-clamp-4 whitespace-pre-line">{instagramCaption || "캡션 없음"}</p>
-              </div>
-              {hashtagText && (
-                <div className="flex items-start gap-1">
-                  <Hash className="w-4 h-4 mt-0.5 flex-shrink-0 text-blue-500" />
-                  <p className="text-xs text-blue-500 line-clamp-2">{hashtagText}</p>
+              {isEditing ? (
+                <Textarea
+                  value={editSlides[currentSlide] || ""}
+                  onChange={(e) => {
+                    const next = [...editSlides];
+                    next[currentSlide] = e.target.value;
+                    setEditSlides(next);
+                  }}
+                  rows={4}
+                  className="text-sm resize-none"
+                  placeholder="슬라이드 텍스트 입력..."
+                />
+              ) : (
+                <div className="bg-muted/40 rounded-md p-2 min-h-[60px]">
+                  <p className="text-sm whitespace-pre-line">{editSlides[currentSlide] || <span className="text-muted-foreground text-xs">텍스트 없음</span>}</p>
                 </div>
+              )}
+
+              {/* 슬라이드 썸네일 목록 */}
+              {editSlides.length > 1 && (
+                <div className="flex gap-1.5 overflow-x-auto pt-1">
+                  {editSlides.map((slide, i) => (
+                    <button key={i} onClick={() => setCurrentSlide(i)}
+                      className={`flex-shrink-0 w-10 h-10 rounded text-[7px] font-bold text-white text-center leading-tight px-1 line-clamp-3 transition-all ${i === currentSlide ? "ring-2 ring-pink-500" : "opacity-70"} bg-gradient-to-br from-purple-500 to-blue-500`}>
+                      {slide.split("\n")[0].slice(0, 12)}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* 캡션 편집 */}
+            <div className="p-3 space-y-2 border-b">
+              <div className="flex items-center gap-1">
+                <AlignLeft className="w-4 h-4 flex-shrink-0 text-muted-foreground" />
+                <span className="text-xs font-medium text-muted-foreground">캡션 (줄바꿈 그대로 발행됨)</span>
+              </div>
+              {isEditing ? (
+                <Textarea
+                  value={editCaption}
+                  onChange={(e) => setEditCaption(e.target.value)}
+                  rows={6}
+                  className="text-sm resize-none"
+                  placeholder="캡션 입력..."
+                />
+              ) : (
+                <p className="text-sm whitespace-pre-line line-clamp-6">{editCaption || "캡션 없음"}</p>
+              )}
+            </div>
+
+            {/* 해시태그 편집 */}
+            <div className="p-3 space-y-2">
+              <div className="flex items-center gap-1">
+                <Hash className="w-4 h-4 flex-shrink-0 text-blue-500" />
+                <span className="text-xs font-medium text-muted-foreground">해시태그</span>
+              </div>
+              {isEditing ? (
+                <Textarea
+                  value={editHashtags}
+                  onChange={(e) => setEditHashtags(e.target.value)}
+                  rows={2}
+                  className="text-sm resize-none"
+                  placeholder="#해시태그 #공백으로구분"
+                />
+              ) : (
+                <p className="text-xs text-blue-500 line-clamp-2">{displayHashtags || "해시태그 없음"}</p>
               )}
             </div>
           </div>
@@ -219,7 +321,7 @@ export default function PublishReviewDialog({
                 <div key={i} className={`flex items-center gap-2 p-3 rounded-lg ${r.success ? "bg-green-50 dark:bg-green-950" : "bg-red-50 dark:bg-red-950"}`}>
                   {r.success
                     ? <CheckCircle className="w-4 h-4 text-green-600" />
-                    : <span className="w-4 h-4 text-red-500">✗</span>}
+                    : <span className="text-red-500">✗</span>}
                   <span className="text-sm font-medium">{r.platform}</span>
                   {r.success
                     ? <a href={r.postUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-500 underline ml-auto">게시물 보기</a>
@@ -242,19 +344,24 @@ export default function PublishReviewDialog({
               </TabsList>
 
               <TabsContent value="now" className="space-y-4 mt-4">
+                {isEditing && (
+                  <div className="bg-blue-50 dark:bg-blue-950 rounded-lg p-3 text-sm text-blue-800 dark:text-blue-200">
+                    ℹ️ 수정 중입니다. 발행 전에 <strong>저장</strong>을 먼저 눌러주세요.
+                  </div>
+                )}
                 <div className="bg-amber-50 dark:bg-amber-950 rounded-lg p-3 text-sm text-amber-800 dark:text-amber-200">
                   <p className="font-medium mb-1">⚠️ 발행 전 확인</p>
                   <ul className="list-disc list-inside space-y-1 text-xs">
-                    <li>위 이미지와 캡션이 Instagram에 그대로 게시됩니다.</li>
+                    <li>슬라이드 텍스트가 이미지에 합성되어 발행됩니다.</li>
+                    <li>캡션 줄바꿈은 Instagram에 그대로 반영됩니다.</li>
                     <li>Settings에서 Instagram 계정이 연결되어 있어야 합니다.</li>
-                    <li>발행 후 취소는 Instagram 앱에서 직접 해야 합니다.</li>
                   </ul>
                 </div>
                 <Button
                   className="w-full gap-2 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600"
                   size="lg"
                   onClick={() => publishNowMutation.mutate()}
-                  disabled={publishNowMutation.isPending}
+                  disabled={publishNowMutation.isPending || isEditing}
                 >
                   {publishNowMutation.isPending
                     ? <><Loader2 className="w-4 h-4 animate-spin" />발행 중...</>
@@ -266,20 +373,14 @@ export default function PublishReviewDialog({
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-2">
                     <Label>발행 날짜</Label>
-                    <Input
-                      type="date"
-                      value={scheduleDate}
+                    <Input type="date" value={scheduleDate}
                       min={new Date().toISOString().split("T")[0]}
-                      onChange={(e) => setScheduleDate(e.target.value)}
-                    />
+                      onChange={(e) => setScheduleDate(e.target.value)} />
                   </div>
                   <div className="space-y-2">
                     <Label>발행 시간</Label>
-                    <Input
-                      type="time"
-                      value={scheduleTime}
-                      onChange={(e) => setScheduleTime(e.target.value)}
-                    />
+                    <Input type="time" value={scheduleTime}
+                      onChange={(e) => setScheduleTime(e.target.value)} />
                   </div>
                 </div>
                 {scheduleDate && (
@@ -288,12 +389,9 @@ export default function PublishReviewDialog({
                     <span>{scheduleDate} {scheduleTime}에 자동 발행 예약됩니다.</span>
                   </div>
                 )}
-                <Button
-                  className="w-full gap-2"
-                  size="lg"
+                <Button className="w-full gap-2" size="lg"
                   onClick={() => scheduleMutation.mutate()}
-                  disabled={scheduleMutation.isPending || !scheduleDate}
-                >
+                  disabled={scheduleMutation.isPending || !scheduleDate || isEditing}>
                   {scheduleMutation.isPending
                     ? <><Loader2 className="w-4 h-4 animate-spin" />예약 중...</>
                     : <><Clock className="w-4 h-4" />예약 발행 등록</>}
