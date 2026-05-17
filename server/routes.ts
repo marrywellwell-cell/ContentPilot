@@ -907,7 +907,16 @@ USP: ${brandAnalysis.usp}
   app.post("/api/content-sets", isAuthenticated, async (req: any, res) => {
     try {
       const userId = (req.user as any).id;
-      const validated = insertContentSetSchema.parse({ ...req.body, userId });
+      const body = { ...req.body, userId };
+
+      // base64 이미지는 DB에 저장하지 않음 (크기 문제) — URL만 보관
+      const stripBase64 = (urls: string[] | undefined) =>
+        urls?.map(u => u.startsWith("data:") ? "" : u).filter(Boolean) ?? [];
+
+      body.instagramImageUrls = stripBase64(body.instagramImageUrls);
+      body.blogImageUrls = stripBase64(body.blogImageUrls);
+
+      const validated = insertContentSetSchema.parse(body);
       const contentSet = await storage.createContentSet(validated);
       res.json(contentSet);
     } catch (error: any) {
