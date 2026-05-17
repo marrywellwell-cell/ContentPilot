@@ -713,22 +713,29 @@ export class PostgresStorage implements IStorage {
     this.db = drizzle(this.pool);
   }
 
-  // DB 쿼리 재시도 래퍼 — 연결 끊김 시 1회 재시도
-  private async withRetry<T>(fn: () => Promise<T>): Promise<T> {
-    try {
-      return await fn();
-    } catch (err: any) {
-      const isConnErr =
-        err?.message?.includes("Connection terminated") ||
-        err?.message?.includes("connection") ||
-        err?.code === "57P01";
-      if (isConnErr) {
-        console.warn("[DB] 연결 끊김 감지, 1초 후 재시도...");
-        await new Promise((r) => setTimeout(r, 1000));
+  // DB 쿼리 재시도 래퍼 — 연결 끊김 시 최대 3회 재시도 (지수 백오프)
+  private async withRetry<T>(fn: () => Promise<T>, maxRetries = 3): Promise<T> {
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
         return await fn();
+      } catch (err: any) {
+        const isConnErr =
+          err?.message?.includes("Connection terminated") ||
+          err?.message?.includes("ECONNREFUSED") ||
+          err?.message?.includes("ENOTFOUND") ||
+          err?.message?.includes("connect") ||
+          err?.code === "57P01" ||
+          err?.code === "ECONNRESET";
+        if (isConnErr && attempt < maxRetries) {
+          const delay = attempt * 2000;
+          console.warn(`[DB] 연결 오류 (${attempt}/${maxRetries}), ${delay}ms 후 재시도...`);
+          await new Promise((r) => setTimeout(r, delay));
+          continue;
+        }
+        throw err;
       }
-      throw err;
     }
+    throw new Error("DB 재시도 한도 초과");
   }
 
   async getUser(id: string): Promise<User | undefined> {
