@@ -2,27 +2,14 @@ import passport from "passport";
 import { Strategy as GoogleStrategy } from "passport-google-oauth20";
 import session from "express-session";
 import type { Express, RequestHandler } from "express";
-import connectPg from "connect-pg-simple";
 import { storage } from "./storage";
 
 export function getSession() {
   const sessionTtl = 7 * 24 * 60 * 60 * 1000; // 1 week
 
-  let store: session.Store | undefined;
-  if (process.env.DATABASE_URL) {
-    const pgStore = connectPg(session);
-    store = new pgStore({
-      conString: process.env.DATABASE_URL,
-      createTableIfMissing: false,
-      ttl: sessionTtl,
-      tableName: "sessions",
-    });
-  }
-  // DATABASE_URL 없으면 기본 메모리 스토어 사용
-
+  // 메모리 세션 사용 — DB 연결 부하 제거 (Render 무료 플랜 안정성 향상)
   return session({
     secret: process.env.SESSION_SECRET || "contentflow-dev-secret-change-in-production",
-    store,
     resave: false,
     saveUninitialized: false,
     cookie: {

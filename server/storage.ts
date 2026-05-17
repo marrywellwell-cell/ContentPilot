@@ -698,12 +698,12 @@ export class PostgresStorage implements IStorage {
     this.pool = new Pool({
       connectionString: process.env.DATABASE_URL,
       ssl: { rejectUnauthorized: false },
-      max: 5,
-      min: 1,
-      idleTimeoutMillis: 60000,
-      connectionTimeoutMillis: 15000,
+      max: 3,
+      min: 0,
+      idleTimeoutMillis: 10000,
+      connectionTimeoutMillis: 20000,
       keepAlive: true,
-      keepAliveInitialDelayMillis: 10000,
+      keepAliveInitialDelayMillis: 5000,
     });
 
     this.pool.on("error", (err) => {
