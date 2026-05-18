@@ -58,32 +58,46 @@ async function compositeTextOnImage(
     const sy = (img.height - sh) / 2;
     ctx.drawImage(img, sx, sy, sw, sh, 0, 0, SIZE, SIZE);
 
-    const grad = ctx.createLinearGradient(0, SIZE * 0.45, 0, SIZE);
-    grad.addColorStop(0, "rgba(0,0,0,0)");
-    grad.addColorStop(1, "rgba(0,0,0,0.75)");
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, SIZE, SIZE);
-
     const lines = text.split("\n").filter((l: string) => l.trim());
     const titleLine = lines[0] || "";
     const bodyLines = lines.slice(1).filter((l: string) => l.trim());
-    const titleSize = isCover ? 70 : 58;
+    const titleSize = isCover ? 80 : 68;
+    const bodySize = 44;
+    const lineSpacing = 58;
 
-    ctx.font = `bold ${titleSize}px "NotoSansKR", sans-serif`;
+    // 텍스트 전체 높이 계산
+    const totalTextHeight = titleSize + (bodyLines.length > 0 ? titleSize * 0.4 + bodyLines.length * lineSpacing : 0);
+
+    // 중앙 배경 오버레이 (가독성)
+    const padV = 60, padH = 80;
+    const boxH = totalTextHeight + padV * 2;
+    const boxY = (SIZE - boxH) / 2;
+    ctx.fillStyle = "rgba(0,0,0,0.52)";
+    ctx.beginPath();
+    ctx.roundRect(padH / 2, boxY, SIZE - padH, boxH, 20);
+    ctx.fill();
+
+    // 텍스트 중앙 배치
     ctx.fillStyle = "#ffffff";
     ctx.textAlign = "center";
-    ctx.shadowColor = "rgba(0,0,0,0.7)";
-    ctx.shadowBlur = 10;
+    ctx.textBaseline = "middle";
+    ctx.shadowColor = "rgba(0,0,0,0.8)";
+    ctx.shadowBlur = 12;
     ctx.shadowOffsetY = 2;
 
-    const startY = bodyLines.length > 0 ? SIZE * 0.54 : SIZE * 0.62;
-    ctx.fillText(titleLine, SIZE / 2, startY, SIZE * 0.88);
+    const centerY = SIZE / 2;
+    const titleY = bodyLines.length > 0 ? centerY - (bodyLines.length * lineSpacing) / 2 : centerY;
 
+    // 제목
+    ctx.font = `bold ${titleSize}px "NotoSansKR", sans-serif`;
+    ctx.fillText(titleLine, SIZE / 2, titleY, SIZE * 0.85);
+
+    // 본문 불릿
     if (bodyLines.length > 0) {
-      ctx.font = `36px "NotoSansKR", sans-serif`;
-      ctx.shadowBlur = 5;
+      ctx.font = `${bodySize}px "NotoSansKR", sans-serif`;
+      ctx.shadowBlur = 6;
       bodyLines.forEach((line: string, i: number) => {
-        ctx.fillText(line, SIZE / 2, startY + titleSize * 1.25 + i * 50, SIZE * 0.84);
+        ctx.fillText(line, SIZE / 2, titleY + titleSize * 0.8 + (i + 1) * lineSpacing, SIZE * 0.82);
       });
     }
 
