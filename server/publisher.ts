@@ -154,7 +154,7 @@ async function createInstagramMediaContainer(
   }
 
   const res = await fetch(
-    `https://graph.instagram.com/v21.0/${igUserId}/media`,
+    `https://graph.facebook.com/v21.0/${igUserId}/media`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -176,7 +176,7 @@ async function createInstagramCarouselContainer(
   caption: string
 ): Promise<string> {
   const res = await fetch(
-    `https://graph.instagram.com/v21.0/${igUserId}/media`,
+    `https://graph.facebook.com/v21.0/${igUserId}/media`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -202,7 +202,7 @@ async function publishInstagramContainer(
   containerId: string
 ): Promise<string> {
   const res = await fetch(
-    `https://graph.instagram.com/v21.0/${igUserId}/media_publish`,
+    `https://graph.facebook.com/v21.0/${igUserId}/media_publish`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
