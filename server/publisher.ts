@@ -12,9 +12,11 @@ import type { ContentSet, PlatformConnection } from "@shared/schema";
 import * as path from "path";
 
 // canvas는 선택적 — 없어도 텍스트 없이 발행
+import { createRequire } from "module";
+const _require = createRequire(import.meta.url);
 let canvasLib: any = null;
 try {
-  canvasLib = require("canvas");
+  canvasLib = _require("canvas");
   const fontDir = path.join(process.cwd(), "server", "fonts");
   canvasLib.registerFont(path.join(fontDir, "NotoSansKR-Bold.ttf"), { family: "NotoSansKR", weight: "bold" });
   canvasLib.registerFont(path.join(fontDir, "NotoSansKR-Regular.ttf"), { family: "NotoSansKR" });
