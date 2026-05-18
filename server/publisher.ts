@@ -196,11 +196,34 @@ async function createInstagramCarouselContainer(
   return data.id as string;
 }
 
+async function waitForInstagramContainer(
+  containerId: string,
+  accessToken: string,
+  maxWaitMs = 30000
+): Promise<void> {
+  const start = Date.now();
+  while (Date.now() - start < maxWaitMs) {
+    const res = await fetch(
+      `https://graph.facebook.com/v21.0/${containerId}?fields=status_code,status&access_token=${accessToken}`
+    );
+    const data = await res.json() as any;
+    const status = data.status_code || data.status;
+    if (status === "FINISHED") return;
+    if (status === "ERROR" || status === "EXPIRED") {
+      throw new Error(`Instagram 미디어 처리 실패: ${status}`);
+    }
+    await new Promise(r => setTimeout(r, 3000));
+  }
+}
+
 async function publishInstagramContainer(
   igUserId: string,
   accessToken: string,
   containerId: string
 ): Promise<string> {
+  // 미디어 처리 완료 대기
+  await waitForInstagramContainer(containerId, accessToken);
+
   const res = await fetch(
     `https://graph.facebook.com/v21.0/${igUserId}/media_publish`,
     {
