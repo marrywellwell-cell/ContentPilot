@@ -2088,6 +2088,17 @@ Solution: ${brandAnalysis.solution || "없음"}`;
       const baseUrl = `${req.protocol}://${req.get("host")}`;
       const platforms: string[] = req.body.platforms || contentSet.platforms || [];
 
+      // 프론트에서 전송된 이미지로 DB의 빈 이미지를 보완
+      const mergedContentSet = {
+        ...contentSet,
+        instagramImageUrls: (contentSet.instagramImageUrls?.length)
+          ? contentSet.instagramImageUrls
+          : (req.body.instagramImageUrls || []),
+        blogImageUrls: (contentSet.blogImageUrls?.length)
+          ? contentSet.blogImageUrls
+          : (req.body.blogImageUrls || []),
+      };
+
       for (const platform of platforms) {
         const conn = await storage.getPlatformConnection(userId, platform === "blog" ? "wordpress" : platform)
           || (platform === "blog" ? await storage.getPlatformConnection(userId, "tistory") : null);
@@ -2098,11 +2109,11 @@ Solution: ${brandAnalysis.solution || "없음"}`;
         }
 
         if (platform === "instagram") {
-          results.push(await publishToInstagram(conn, contentSet, baseUrl));
+          results.push(await publishToInstagram(conn, mergedContentSet as any, baseUrl));
         } else if (platform === "wordpress" || platform === "blog") {
-          results.push(await publishToWordPress(conn, contentSet));
+          results.push(await publishToWordPress(conn, mergedContentSet as any));
         } else if (platform === "tistory") {
-          results.push(await publishToTistory(conn, contentSet));
+          results.push(await publishToTistory(conn, mergedContentSet as any));
         }
       }
 
