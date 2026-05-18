@@ -347,7 +347,7 @@ export default function Generate() {
           instagramCaption={generatedContent.instagramCaption}
           instagramHashtags={generatedContent.instagramHashtags}
           instagramImageUrls={generatedContent.instagramImageUrls}
-          platforms={generatedContent.platforms}
+          platforms={generatedContent.platforms.filter(p => p === "instagram")}
         />
       )}
     </div>

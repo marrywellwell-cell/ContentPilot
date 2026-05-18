@@ -355,8 +355,8 @@ export default function PublishReviewDialog({
                 <div className="bg-amber-50 dark:bg-amber-950 rounded-lg p-3 text-sm text-amber-800 dark:text-amber-200">
                   <p className="font-medium mb-1">⚠️ 발행 전 확인</p>
                   <ul className="list-disc list-inside space-y-1 text-xs">
-                    <li>슬라이드 텍스트가 이미지에 합성되어 발행됩니다.</li>
-                    <li>캡션 줄바꿈은 Instagram에 그대로 반영됩니다.</li>
+                    <li>슬라이드 텍스트가 이미지에 합성되어 Instagram에 게시됩니다.</li>
+                    <li>캡션 줄바꿈은 그대로 반영됩니다.</li>
                     <li>Settings에서 Instagram 계정이 연결되어 있어야 합니다.</li>
                   </ul>
                 </div>
