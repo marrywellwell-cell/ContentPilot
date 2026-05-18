@@ -63,26 +63,32 @@ export default function Generate() {
   });
 
   // Sync generatedContent with savedContentSet when it changes (e.g., after chat edits)
+  // 이미지는 DB에 저장하지 않으므로 기존 메모리 이미지를 유지
   useEffect(() => {
     if (savedContentSet) {
-      setGeneratedContent({
+      setGeneratedContent((prev) => ({
         keyword: savedContentSet.keyword,
         platforms: savedContentSet.platforms || [],
         instagramSlides: savedContentSet.instagramSlides || undefined,
         instagramCaption: savedContentSet.instagramCaption || undefined,
         instagramHashtags: savedContentSet.instagramHashtags || undefined,
-        instagramImageUrls: savedContentSet.instagramImageUrls || undefined,
+        // DB에 이미지가 없으면 기존 메모리 이미지 유지
+        instagramImageUrls: (savedContentSet.instagramImageUrls?.length)
+          ? savedContentSet.instagramImageUrls
+          : prev?.instagramImageUrls,
         blogTitle: savedContentSet.blogTitle || undefined,
         blogContent: savedContentSet.blogContent || undefined,
         blogMetaDescription: savedContentSet.blogMetaDescription || undefined,
         blogHtml: savedContentSet.blogHtml || undefined,
-        blogImageUrls: savedContentSet.blogImageUrls || undefined,
+        blogImageUrls: (savedContentSet.blogImageUrls?.length)
+          ? savedContentSet.blogImageUrls
+          : prev?.blogImageUrls,
         blogTitles: savedContentSet.blogTitles || undefined,
         blogThumbnailTexts: savedContentSet.blogThumbnailTexts || undefined,
         blogImageRecommendations: (savedContentSet.blogImageRecommendations as ImageRecommendation[]) || undefined,
         blogInternalLinkTopics: savedContentSet.blogInternalLinkTopics || undefined,
         blogHashtags: savedContentSet.blogHashtags || undefined,
-      });
+      }));
     }
   }, [savedContentSet]);
 
