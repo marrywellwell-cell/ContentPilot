@@ -215,6 +215,7 @@ export default function PublishReviewDialog({
                     <p className="text-white font-bold text-center whitespace-pre-line leading-snug text-lg">
                       {editSlides[currentSlide]}
                     </p>
+                  </div>
                 </div>
               )}
 
