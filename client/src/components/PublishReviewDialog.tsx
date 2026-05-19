@@ -208,12 +208,13 @@ export default function PublishReviewDialog({
                 </div>
               )}
 
-              {/* 슬라이드 텍스트 오버레이 (이미지 위) */}
+              {/* 슬라이드 텍스트 오버레이 — 실제 발행과 동일하게 중앙 배치 */}
               {allImages[currentSlide] && editSlides[currentSlide] && (
-                <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent p-4">
-                  <p className="text-white text-sm font-bold text-center whitespace-pre-line leading-relaxed">
-                    {editSlides[currentSlide]}
-                  </p>
+                <div className="absolute inset-0 flex items-center justify-center p-6">
+                  <div className="bg-black/50 rounded-2xl px-6 py-4 max-w-[85%]">
+                    <p className="text-white font-bold text-center whitespace-pre-line leading-snug text-lg">
+                      {editSlides[currentSlide]}
+                    </p>
                 </div>
               )}
 
