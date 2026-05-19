@@ -2051,7 +2051,29 @@ Solution: ${brandAnalysis.solution || "없음"}`;
   app.post("/api/platform-connections", isAuthenticated, async (req: any, res) => {
     try {
       const userId = (req.user as any).id;
-      const body = req.body;
+      const body = { ...req.body };
+
+      // Instagram 토큰 자동 장기 교환
+      if (body.platform === "instagram" && body.instagramAccessToken) {
+        const appId = process.env.INSTAGRAM_APP_ID;
+        const appSecret = process.env.INSTAGRAM_APP_SECRET;
+        if (appId && appSecret) {
+          try {
+            const exchangeUrl = `https://graph.instagram.com/access_token?grant_type=ig_exchange_token&client_secret=${appSecret}&access_token=${body.instagramAccessToken}`;
+            const resp = await fetch(exchangeUrl);
+            const data = await resp.json() as any;
+            if (data.access_token) {
+              console.log("[Instagram] 장기 토큰 교환 성공 (만료: ~60일)");
+              body.instagramAccessToken = data.access_token;
+            } else {
+              console.warn("[Instagram] 장기 토큰 교환 실패, 원본 토큰 사용:", data.error?.message);
+            }
+          } catch (e: any) {
+            console.warn("[Instagram] 장기 토큰 교환 오류:", e.message);
+          }
+        }
+      }
+
       const connection = await storage.upsertPlatformConnection({ ...body, userId });
       res.json({ success: true, platform: connection.platform });
     } catch (e: any) {
