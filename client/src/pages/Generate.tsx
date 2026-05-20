@@ -49,9 +49,15 @@ export default function Generate() {
   
   const urlParams = new URLSearchParams(searchString);
   const initialKeyword = urlParams.get("keyword") || "";
-  
+  const loadId = urlParams.get("id") || "";
+
   useEffect(() => {
     if (initialKeyword) {
+      navigate("/", { replace: true });
+    }
+    // URL에 id가 있으면 해당 콘텐츠 불러오기
+    if (loadId) {
+      setSavedContentSetId(loadId);
       navigate("/", { replace: true });
     }
   }, []);

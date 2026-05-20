@@ -24,7 +24,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Instagram, FileText, MoreVertical, Edit, Trash2, Calendar, Search, Eye, Loader2 } from "lucide-react";
+import { Instagram, FileText, MoreVertical, Edit, Trash2, Calendar, Search, Eye, Loader2, RefreshCw } from "lucide-react";
 
 function StatusBadge({ status }: { status: string }) {
   const statusConfig: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" }> = {
@@ -223,6 +223,12 @@ export default function ContentList() {
                       {new Date(content.scheduledDate).toLocaleDateString("ko-KR")}
                     </div>
                   )}
+                  <Link href={`/?id=${content.id}`}>
+                    <Button variant="ghost" size="sm" className="h-7 px-2">
+                      <RefreshCw className="h-3.5 w-3.5 mr-1" />
+                      불러오기
+                    </Button>
+                  </Link>
                   <Button
                     variant="ghost"
                     size="sm"
