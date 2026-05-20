@@ -2168,6 +2168,33 @@ Solution: ${brandAnalysis.solution || "없음"}`;
     }
   });
 
+  // ─── 유튜브 말씀 블로그 티스토리 발행 ────────────────────────────────────
+  app.post("/api/publish-tistory-blog", isAuthenticated, async (req: any, res) => {
+    const { publishToTistory } = await import("./publisher");
+    try {
+      const userId = (req.user as any).id;
+      const { title, content, hashtags = [] } = req.body;
+      if (!title || !content) return res.status(400).json({ error: "제목과 내용이 필요합니다." });
+
+      const conn = await storage.getPlatformConnection(userId, "tistory");
+      if (!conn) return res.status(404).json({ error: "티스토리 연결 정보가 없습니다. Settings에서 연결해주세요." });
+
+      const fakeContentSet = {
+        keyword: title,
+        blogTitle: title,
+        blogContent: content,
+        blogHtml: content,
+        instagramHashtags: hashtags,
+        platforms: ["tistory"],
+      } as any;
+
+      const result = await publishToTistory(conn, fakeContentSet);
+      res.json(result);
+    } catch (e: any) {
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   // ─── 임시 이미지 서빙 (Instagram 발행용) ─────────────────────────────────
   app.get("/api/images/temp/:id", (req, res) => {
     const { getTempImage } = require("./publisher");

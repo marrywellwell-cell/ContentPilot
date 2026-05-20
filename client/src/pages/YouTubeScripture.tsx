@@ -279,6 +279,7 @@ function InstagramCaptionCard({ caption, hashtags }: { caption: string; hashtags
 function BlogResultCard({ blog }: { blog: BlogContent }) {
   const [expanded, setExpanded] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [publishing, setPublishing] = useState(false);
   const { toast } = useToast();
 
   const copy = async () => {
@@ -286,6 +287,29 @@ function BlogResultCard({ blog }: { blog: BlogContent }) {
     setCopied(true);
     toast({ title: "복사 완료!" });
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const publishToTistory = async () => {
+    setPublishing(true);
+    try {
+      const res = await apiRequest("/api/publish-tistory-blog", {
+        method: "POST",
+        body: JSON.stringify({
+          title: blog.title,
+          content: blog.html || blog.content,
+          hashtags: blog.hashtags || [],
+        }),
+      }) as any;
+      if (res.success) {
+        toast({ title: "티스토리 발행 완료!", description: res.postUrl ? `게시물: ${res.postUrl}` : undefined });
+      } else {
+        toast({ title: "발행 실패", description: res.error, variant: "destructive" });
+      }
+    } catch (e: any) {
+      toast({ title: "발행 실패", description: e.message, variant: "destructive" });
+    } finally {
+      setPublishing(false);
+    }
   };
 
   return (
@@ -300,9 +324,15 @@ function BlogResultCard({ blog }: { blog: BlogContent }) {
               ))}
             </div>
           </div>
-          <Button variant="outline" size="sm" onClick={copy}>
-            {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={publishToTistory} disabled={publishing}>
+              {publishing ? <Loader2 className="w-4 h-4 animate-spin" /> : <span className="text-xs font-bold text-orange-500">T</span>}
+              <span className="ml-1 text-xs">티스토리</span>
+            </Button>
+            <Button variant="outline" size="sm" onClick={copy}>
+              {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+            </Button>
+          </div>
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
