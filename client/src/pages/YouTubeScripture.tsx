@@ -563,9 +563,24 @@ function SavedList({
                 <p className="text-xs text-muted-foreground line-clamp-2 mt-1">{item.bibleVerse}</p>
                 {item.videoTitle && <p className="text-xs text-muted-foreground mt-1 truncate">{item.videoTitle}</p>}
               </div>
-              <Button size="sm" variant="ghost" className="flex-shrink-0" onClick={(e) => { e.stopPropagation(); onDelete(item.id); }}>
-                <Trash2 className="w-4 h-4 text-destructive" />
-              </Button>
+              <div className="flex flex-col gap-1 flex-shrink-0">
+                {item.blogContent && (
+                  <Button
+                    size="sm"
+                    className="h-7 px-2 bg-orange-500 hover:bg-orange-600 text-white text-xs"
+                    onClick={async (e) => {
+                      e.stopPropagation();
+                      await navigator.clipboard.writeText(item.blogContent || "");
+                      window.open("https://inloglab.tistory.com/manage/newpost/", "_blank");
+                    }}
+                  >
+                    <span className="font-bold">T</span>
+                  </Button>
+                )}
+                <Button size="sm" variant="ghost" className="h-7 px-2" onClick={(e) => { e.stopPropagation(); onDelete(item.id); }}>
+                  <Trash2 className="w-4 h-4 text-destructive" />
+                </Button>
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -736,10 +751,22 @@ function ContentDetailDialog({
                     <h3 className="text-sm font-semibold flex items-center gap-1.5">
                       <FileText className="w-4 h-4 text-blue-500" />블로그 내용
                     </h3>
-                    <Button size="sm" variant="ghost" className="h-7 px-2"
-                      onClick={() => copy(item.blogContent!, "blog")}>
-                      {copiedField === "blog" ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
-                    </Button>
+                    <div className="flex gap-1">
+                      <Button
+                        size="sm"
+                        className="h-7 px-2 bg-orange-500 hover:bg-orange-600 text-white text-xs"
+                        onClick={async () => {
+                          await navigator.clipboard.writeText(item.blogContent || "");
+                          window.open("https://inloglab.tistory.com/manage/newpost/", "_blank");
+                        }}
+                      >
+                        <span className="font-bold mr-1">T</span>티스토리
+                      </Button>
+                      <Button size="sm" variant="ghost" className="h-7 px-2"
+                        onClick={() => copy(item.blogContent!, "blog")}>
+                        {copiedField === "blog" ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
+                      </Button>
+                    </div>
                   </div>
                   {item.blogTitle && <p className="font-medium text-sm">{item.blogTitle}</p>}
                   <p className="text-xs text-muted-foreground leading-relaxed line-clamp-6 whitespace-pre-wrap">{item.blogContent}</p>
