@@ -58,9 +58,14 @@ async function compositeTextOnImage(
     const sy = (img.height - sh) / 2;
     ctx.drawImage(img, sx, sy, sw, sh, 0, 0, SIZE, SIZE);
 
-    const lines = text.split("\n").filter((l: string) => l.trim());
-    const titleLine = lines[0] || "";
-    const bodyLines = lines.slice(1).filter((l: string) => l.trim());
+    // 이모지 제거 (NotoSansKR 폰트 미지원)
+    const removeEmoji = (s: string) =>
+      s.replace(/[\u{1F000}-\u{1FFFF}\u{2600}-\u{27FF}\u{2B00}-\u{2BFF}\u{FE00}-\u{FEFF}]/gu, "").trim();
+
+    const lines = text.split("\n").map(removeEmoji).filter((l: string) => l.trim());
+    // 이미지에는 제목 1줄 + 불릿 최대 3개만 표시 (간략하게)
+    const titleLine = (lines[0] || "").slice(0, 20);
+    const bodyLines = lines.slice(1).filter((l: string) => l.trim()).slice(0, 3).map((l: string) => l.slice(0, 16));
     const titleSize = isCover ? 80 : 68;
     const bodySize = 44;
     const lineSpacing = 58;
