@@ -2053,23 +2053,39 @@ Solution: ${brandAnalysis.solution || "없음"}`;
       const userId = (req.user as any).id;
       const body = { ...req.body };
 
-      // Instagram 토큰 자동 장기 교환
+      // Instagram 토큰 자동 장기 교환 (Facebook Graph API 방식)
       if (body.platform === "instagram" && body.instagramAccessToken) {
         const appId = process.env.INSTAGRAM_APP_ID;
         const appSecret = process.env.INSTAGRAM_APP_SECRET;
         if (appId && appSecret) {
           try {
-            const exchangeUrl = `https://graph.instagram.com/access_token?grant_type=ig_exchange_token&client_secret=${appSecret}&access_token=${body.instagramAccessToken}`;
-            const resp = await fetch(exchangeUrl);
-            const data = await resp.json() as any;
-            if (data.access_token) {
-              console.log("[Instagram] 장기 토큰 교환 성공 (만료: ~60일)");
-              body.instagramAccessToken = data.access_token;
+            // 1단계: 단기 유저 토큰 → 장기 유저 토큰
+            const userExchangeUrl = `https://graph.facebook.com/oauth/access_token?grant_type=fb_exchange_token&client_id=${appId}&client_secret=${appSecret}&fb_exchange_token=${body.instagramAccessToken}`;
+            const userResp = await fetch(userExchangeUrl);
+            const userData = await userResp.json() as any;
+
+            if (userData.access_token) {
+              console.log("[Instagram] 장기 유저 토큰 교환 성공");
+              const longUserToken = userData.access_token;
+
+              // 2단계: 장기 유저 토큰으로 페이지 토큰 획득
+              const pageResp = await fetch(`https://graph.facebook.com/me/accounts?access_token=${longUserToken}`);
+              const pageData = await pageResp.json() as any;
+              const marrywell = pageData.data?.find((p: any) => p.name === "Marrywell" || p.id === "1082965191562561");
+
+              if (marrywell?.access_token) {
+                console.log("[Instagram] 페이지 토큰 획득 성공 (영구 토큰)");
+                body.instagramAccessToken = marrywell.access_token;
+                body.instagramUserId = "1082965191562561";
+              } else {
+                console.warn("[Instagram] 페이지 토큰 획득 실패, 장기 유저 토큰 사용");
+                body.instagramAccessToken = longUserToken;
+              }
             } else {
-              console.warn("[Instagram] 장기 토큰 교환 실패, 원본 토큰 사용:", data.error?.message);
+              console.warn("[Instagram] 장기 토큰 교환 실패:", userData.error?.message);
             }
           } catch (e: any) {
-            console.warn("[Instagram] 장기 토큰 교환 오류:", e.message);
+            console.warn("[Instagram] 토큰 교환 오류:", e.message);
           }
         }
       }
