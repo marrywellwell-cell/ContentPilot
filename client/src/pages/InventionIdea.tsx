@@ -13,6 +13,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { useToast } from "@/hooks/use-toast";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { stripBase64Images } from "@/lib/downloadImage";
 import { Loader2, Lightbulb, Download, Copy, Check, Sparkles, Trash2, Eye, ChevronLeft, ChevronRight, Instagram, Video, Plus, X, History, Film, FileText, Mic, Upload, Wand2, Send, PenLine } from "lucide-react";
 import { downloadImageViaServer } from "@/lib/downloadImage";
 import { Progress } from "@/components/ui/progress";
@@ -2042,7 +2043,7 @@ export default function InventionIdea() {
                             size="sm"
                             className="bg-orange-500 hover:bg-orange-600 text-white"
                             onClick={async () => {
-                              await navigator.clipboard.writeText(content.blogHtml || content.blogContent || "");
+                              await navigator.clipboard.writeText(stripBase64Images(content.blogHtml || content.blogContent || ""));
                               window.open("https://inloglab.tistory.com/manage/newpost/", "_blank");
                             }}
                           >

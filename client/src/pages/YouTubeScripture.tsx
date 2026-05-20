@@ -16,6 +16,7 @@ import YouTubeUploadDialog from "@/components/YouTubeUploadDialog";
 import { useToast } from "@/hooks/use-toast";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { stripBase64Images } from "@/lib/downloadImage";
 import {
   Loader2, Youtube, BookOpen, Download, Copy, Check,
   Sparkles, Trash2, FileText, ChevronDown, ChevronUp,
@@ -330,7 +331,7 @@ function BlogResultCard({ blog }: { blog: BlogContent }) {
               size="sm"
               className="bg-orange-500 hover:bg-orange-600 text-white gap-1"
               onClick={async () => {
-                await navigator.clipboard.writeText(blog.html || blog.content);
+                await navigator.clipboard.writeText(stripBase64Images(blog.html || blog.content));
                 window.open("https://inloglab.tistory.com/manage/newpost/", "_blank");
                 toast({ title: "HTML 복사!", description: "에디터에서 HTML 모드로 전환 후 붙여넣기 하세요." });
               }}
@@ -570,7 +571,7 @@ function SavedList({
                     className="h-7 px-2 bg-orange-500 hover:bg-orange-600 text-white text-xs"
                     onClick={async (e) => {
                       e.stopPropagation();
-                      await navigator.clipboard.writeText(item.blogContent || "");
+                      await navigator.clipboard.writeText(stripBase64Images(item.blogContent || ""));
                       window.open("https://inloglab.tistory.com/manage/newpost/", "_blank");
                     }}
                   >

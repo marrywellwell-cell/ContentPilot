@@ -6,7 +6,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { useToast } from "@/hooks/use-toast";
 import { useState } from "react";
-import { downloadImageViaServer } from "@/lib/downloadImage";
+import { downloadImageViaServer, stripBase64Images } from "@/lib/downloadImage";
 
 interface ImageRecommendation {
   description: string;
@@ -447,7 +447,7 @@ export function BlogPreview({
         <div className="pt-4 border-t space-y-2">
           <Button
             onClick={async () => {
-              await navigator.clipboard.writeText(content);
+              await navigator.clipboard.writeText(stripBase64Images(content));
               window.open("https://inloglab.tistory.com/manage/newpost/", "_blank");
               toast({ title: "HTML 복사 완료!", description: "티스토리 에디터에서 HTML 모드로 전환 후 붙여넣기 하세요." });
             }}
