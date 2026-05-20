@@ -2039,33 +2039,14 @@ export default function InventionIdea() {
                             텍스트 복사
                           </Button>
                           <Button
-                            variant="outline"
                             size="sm"
-                            className="text-orange-500 border-orange-300"
+                            className="bg-orange-500 hover:bg-orange-600 text-white"
                             onClick={async () => {
-                              try {
-                                const res = await fetch("/api/publish-tistory-blog", {
-                                  method: "POST",
-                                  headers: { "Content-Type": "application/json" },
-                                  body: JSON.stringify({
-                                    title: content.blogTitle,
-                                    content: content.blogHtml || content.blogContent,
-                                    hashtags: content.blogHashtags || [],
-                                    category: "life lab",
-                                  }),
-                                });
-                                const data = await res.json();
-                                if (data.success) {
-                                  alert("티스토리 발행 완료! (life lab)");
-                                } else {
-                                  alert("발행 실패: " + (data.error || "알 수 없는 오류"));
-                                }
-                              } catch (e: any) {
-                                alert("발행 오류: " + e.message);
-                              }
+                              await navigator.clipboard.writeText(content.blogHtml || content.blogContent || "");
+                              window.open("https://inloglab.tistory.com/manage/newpost/", "_blank");
                             }}
                           >
-                            <span className="font-bold mr-1">T</span> 티스토리 발행
+                            <span className="font-bold mr-1">T</span> 티스토리
                           </Button>
                         </div>
                       </div>

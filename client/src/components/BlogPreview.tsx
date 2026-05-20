@@ -444,7 +444,18 @@ export function BlogPreview({
           </div>
         )}
 
-        <div className="pt-4 border-t">
+        <div className="pt-4 border-t space-y-2">
+          <Button
+            onClick={async () => {
+              await navigator.clipboard.writeText(content);
+              window.open("https://inloglab.tistory.com/manage/newpost/", "_blank");
+              toast({ title: "HTML 복사 완료!", description: "티스토리 에디터에서 HTML 모드로 전환 후 붙여넣기 하세요." });
+            }}
+            className="w-full bg-orange-500 hover:bg-orange-600 text-white"
+          >
+            <span className="font-bold mr-2">T</span>
+            티스토리에 발행하기 (HTML 복사 + 새탭 열기)
+          </Button>
           <Button
             onClick={handleCopyHTML}
             variant="outline"
@@ -452,13 +463,11 @@ export function BlogPreview({
             data-testid="button-copy-html-full"
           >
             <Copy className="h-4 w-4 mr-2" />
-            텍스트만 복사 (네이버 블로그용)
+            텍스트만 복사
           </Button>
-          {extractedImageUrls.length > 0 && (
-            <p className="text-xs text-muted-foreground mt-2 text-center">
-              이미지는 위 버튼으로 다운로드 후 네이버 블로그에 직접 업로드하세요
-            </p>
-          )}
+          <p className="text-xs text-muted-foreground text-center">
+            티스토리 에디터 → 우측 상단 <strong>HTML</strong> 버튼 클릭 후 붙여넣기
+          </p>
         </div>
       </CardContent>
     </Card>

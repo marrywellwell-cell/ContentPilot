@@ -326,9 +326,16 @@ function BlogResultCard({ blog }: { blog: BlogContent }) {
             </div>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={publishToTistory} disabled={publishing}>
-              {publishing ? <Loader2 className="w-4 h-4 animate-spin" /> : <span className="text-xs font-bold text-orange-500">T</span>}
-              <span className="ml-1 text-xs">티스토리</span>
+            <Button
+              size="sm"
+              className="bg-orange-500 hover:bg-orange-600 text-white gap-1"
+              onClick={async () => {
+                await navigator.clipboard.writeText(blog.html || blog.content);
+                window.open("https://inloglab.tistory.com/manage/newpost/", "_blank");
+                toast({ title: "HTML 복사!", description: "에디터에서 HTML 모드로 전환 후 붙여넣기 하세요." });
+              }}
+            >
+              <span className="font-bold">T</span> 티스토리
             </Button>
             <Button variant="outline" size="sm" onClick={copy}>
               {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
