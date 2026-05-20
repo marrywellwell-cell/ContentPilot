@@ -2038,6 +2038,35 @@ export default function InventionIdea() {
                             {copiedField === "blogContent" ? <Check className="w-4 h-4 mr-2" /> : <Copy className="w-4 h-4 mr-2" />}
                             텍스트 복사
                           </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="text-orange-500 border-orange-300"
+                            onClick={async () => {
+                              try {
+                                const res = await fetch("/api/publish-tistory-blog", {
+                                  method: "POST",
+                                  headers: { "Content-Type": "application/json" },
+                                  body: JSON.stringify({
+                                    title: content.blogTitle,
+                                    content: content.blogHtml || content.blogContent,
+                                    hashtags: content.blogHashtags || [],
+                                    category: "life lab",
+                                  }),
+                                });
+                                const data = await res.json();
+                                if (data.success) {
+                                  alert("티스토리 발행 완료! (life lab)");
+                                } else {
+                                  alert("발행 실패: " + (data.error || "알 수 없는 오류"));
+                                }
+                              } catch (e: any) {
+                                alert("발행 오류: " + e.message);
+                              }
+                            }}
+                          >
+                            <span className="font-bold mr-1">T</span> 티스토리 발행
+                          </Button>
                         </div>
                       </div>
 

@@ -426,9 +426,30 @@ export async function publishToWordPress(
 
 // ─── Tistory Open API ─────────────────────────────────────────────────────────
 
+// 티스토리 카테고리 목록 조회
+export async function getTistoryCategories(accessToken: string, blogName: string) {
+  const params = new URLSearchParams({ access_token: accessToken, output: "json", blogName });
+  const res = await fetch(`https://www.tistory.com/apis/category/list?${params.toString()}`);
+  const data = await res.json() as any;
+  return (data.tistory?.item?.categories?.category || []) as { id: string; name: string; parent: string }[];
+}
+
+// 카테고리 이름으로 ID 찾기
+async function findCategoryId(accessToken: string, blogName: string, categoryName: string): Promise<string | undefined> {
+  try {
+    const categories = await getTistoryCategories(accessToken, blogName);
+    const found = categories.find((c) => c.name.toLowerCase().includes(categoryName.toLowerCase()));
+    return found?.id;
+  } catch (e) {
+    console.warn("[Tistory] 카테고리 조회 실패:", (e as any).message);
+    return undefined;
+  }
+}
+
 export async function publishToTistory(
   connection: PlatformConnection,
-  contentSet: ContentSet
+  contentSet: ContentSet,
+  categoryName?: string
 ): Promise<PublishResult> {
   const { tistoryAccessToken, tistoryBlogName } = connection;
 
@@ -437,17 +458,25 @@ export async function publishToTistory(
   }
 
   try {
-    const params = new URLSearchParams({
+    // 카테고리 ID 조회
+    let categoryId: string | undefined;
+    if (categoryName) {
+      categoryId = await findCategoryId(tistoryAccessToken, tistoryBlogName, categoryName);
+      console.log(`[Tistory] 카테고리 "${categoryName}" → ID: ${categoryId || "없음"}`);
+    }
+
+    const params: Record<string, string> = {
       access_token: tistoryAccessToken,
       output: "json",
       blogName: tistoryBlogName,
       title: contentSet.blogTitle || contentSet.keyword,
       content: contentSet.blogHtml || contentSet.blogContent || "",
-      visibility: "3", // 공개
+      visibility: "3",
       tag: (contentSet.blogHashtags || []).slice(0, 10).join(","),
-    });
+    };
+    if (categoryId) params.category = categoryId;
 
-    const res = await fetch(`https://www.tistory.com/apis/post/write?${params.toString()}`, {
+    const res = await fetch(`https://www.tistory.com/apis/post/write?${new URLSearchParams(params).toString()}`, {
       method: "POST",
     });
 
@@ -456,10 +485,7 @@ export async function publishToTistory(
       throw new Error(data.tistory?.error_message || res.statusText);
     }
 
-    const postId = data.tistory?.postId;
-    const postUrl = data.tistory?.url;
-
-    return { platform: "tistory", success: true, postId, postUrl };
+    return { platform: "tistory", success: true, postId: data.tistory?.postId, postUrl: data.tistory?.url };
   } catch (error: any) {
     return { platform: "tistory", success: false, error: error.message };
   }

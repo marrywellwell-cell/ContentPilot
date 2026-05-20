@@ -2173,7 +2173,7 @@ Solution: ${brandAnalysis.solution || "없음"}`;
     const { publishToTistory } = await import("./publisher");
     try {
       const userId = (req.user as any).id;
-      const { title, content, hashtags = [] } = req.body;
+      const { title, content, hashtags = [], category } = req.body;
       if (!title || !content) return res.status(400).json({ error: "제목과 내용이 필요합니다." });
 
       const conn = await storage.getPlatformConnection(userId, "tistory");
@@ -2184,11 +2184,12 @@ Solution: ${brandAnalysis.solution || "없음"}`;
         blogTitle: title,
         blogContent: content,
         blogHtml: content,
-        instagramHashtags: hashtags,
+        blogHashtags: hashtags,
         platforms: ["tistory"],
       } as any;
 
-      const result = await publishToTistory(conn, fakeContentSet);
+      // category: "wisdom lab" | "life lab" | undefined
+      const result = await publishToTistory(conn, fakeContentSet, category);
       res.json(result);
     } catch (e: any) {
       res.status(500).json({ error: e.message });

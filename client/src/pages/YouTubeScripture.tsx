@@ -298,6 +298,7 @@ function BlogResultCard({ blog }: { blog: BlogContent }) {
           title: blog.title,
           content: blog.html || blog.content,
           hashtags: blog.hashtags || [],
+          category: "wisdom lab",
         }),
       }) as any;
       if (res.success) {
