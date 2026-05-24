@@ -3,7 +3,7 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { randomUUID } from "crypto";
 import { storage } from "./storage";
-import { generateInstagramContent, generateBlogContent, generateInstagramVisual, generateBlogInfographic, editContentWithChat, generateBrandAnalysis, generateMonthlyPlan, generateYouTubeScriptureContent, generateScriptureImage, editInventionSlides } from "./ai";
+import { generateInstagramContent, generateBlogContent, generateInstagramVisual, generateBlogInfographic, editContentWithChat, generateBrandAnalysis, generateMonthlyPlan, editInventionSlides } from "./ai";
 import { insertContentSetSchema, insertBrandAnalysisSchema, insertMonthlyPlanSchema, chatRequestSchema } from "@shared/schema";
 import { z } from "zod";
 import pLimit from "p-limit";
@@ -1664,36 +1664,30 @@ Solution: ${brandAnalysis.solution || "없음"}`;
                     transcript = `영상 제목: ${videoTitle}. 이 영상의 핵심 주제와 메시지를 기반으로 적절한 성경 말씀을 추천해주세요.`;
                   }
                   
-                  // Generate scripture content
-                  const scriptureContent = await generateYouTubeScriptureContent(transcript);
-                  
-                  // Generate images (limit to 2 for auto-generation)
-                  const imageLimit = pLimit(2);
-                  const slidesToGenerate = scriptureContent.instagramSlides.slice(0, 2);
-                  const imagePromises = slidesToGenerate.map((slide) =>
-                    imageLimit(async () => {
-                      const image = await generateScriptureImage(slide, scriptureContent.bibleReference);
-                      return image;
-                    })
-                  );
-                  const imageResults = await Promise.all(imagePromises);
-                  const imageUrls = imageResults.filter((url): url is string => url !== null);
-                  
+                  // Generate scripture content (이미지 포함 — scripture-generator 통합 처리)
+                  const { generateScriptureContent } = await import("./scripture-generator");
+                  const scriptureContent = await generateScriptureContent(transcript);
+
+                  // 썸네일(200×200 JPEG ~8KB)을 imageUrls에 저장, 없으면 Unsplash fallback
+                  const imageUrls = scriptureContent.thumbnailBase64
+                    ? [scriptureContent.thumbnailBase64]
+                    : (scriptureContent.imageUrl ? [scriptureContent.imageUrl] : []);
+
                   // Save the generated content
                   await storage.createScriptureContent({
                     userId,
                     youtubeUrl,
                     videoTitle: scriptureContent.videoTitle || videoTitle,
                     videoSummary: scriptureContent.videoSummary,
-                    bibleVerse: scriptureContent.bibleVerse,
-                    bibleReference: scriptureContent.bibleReference,
+                    bibleVerse: scriptureContent.verseContent,
+                    bibleReference: scriptureContent.verseReference,
                     instagramSlides: scriptureContent.instagramSlides,
-                    instagramCaption: scriptureContent.instagramCaption,
-                    instagramHashtags: scriptureContent.instagramHashtags,
+                    instagramCaption: scriptureContent.caption,
+                    instagramHashtags: scriptureContent.hashtags,
                     imageUrls,
-                    blogTitle: scriptureContent.blogTitle,
-                    blogContent: scriptureContent.blogContent,
-                    blogMetaDescription: scriptureContent.blogMetaDescription,
+                    blogTitle: "",
+                    blogContent: scriptureContent.summary.join("\n\n"),
+                    blogMetaDescription: scriptureContent.coreMessage.slice(0, 150),
                   });
                   
                   generatedCount++;
