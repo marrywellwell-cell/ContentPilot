@@ -31,25 +31,30 @@ export interface ScriptureBlogContent {
 // ── 이미지 생성 (base64 반환, 파일 저장 없음) ─────────────────────────────────
 
 async function generateBlogImageBase64(prompt: string): Promise<string | null> {
-  // 1차: OpenAI dall-e-3
+  const fullPrompt = (
+    "STRICT RULE: absolutely NO people, NO humans, NO faces. " +
+    prompt.slice(0, 700) +
+    " Photorealistic, high quality, no text in image."
+  ).trim();
+
+  // 1차: OpenAI (gpt-image-1-mini → gpt-image-1 → dall-e-3 → dall-e-2)
   if (process.env.OPENAI_API_KEY) {
-    try {
-      const openai = getOpenAI();
-      const res = await openai.images.generate({
-        model: "dall-e-3",
-        prompt: (prompt + " No text in image. Photorealistic.").slice(0, 1000),
-        n: 1,
-        size: "1024x1024",
-      });
-      const imageUrl = res.data?.[0]?.url;
-      if (imageUrl) {
-        const imgRes = await fetch(imageUrl);
-        if (imgRes.ok) {
-          const buf = Buffer.from(await imgRes.arrayBuffer());
-          return `data:image/png;base64,${buf.toString("base64")}`;
+    const openaiModels = ["gpt-image-1-mini", "gpt-image-1", "dall-e-3", "dall-e-2"] as const;
+    for (const model of openaiModels) {
+      try {
+        const openai = getOpenAI();
+        const params: any = { model, prompt: fullPrompt.slice(0, 1000), n: 1, size: "1024x1024" };
+        if (model.startsWith("gpt-image")) params.response_format = "b64_json";
+        const res = await openai.images.generate(params);
+        const b64 = res.data?.[0]?.b64_json;
+        const url = res.data?.[0]?.url;
+        if (b64) return `data:image/png;base64,${b64}`;
+        if (url) {
+          const imgRes = await fetch(url);
+          if (imgRes.ok) return `data:image/png;base64,${Buffer.from(await imgRes.arrayBuffer()).toString("base64")}`;
         }
-      }
-    } catch (e: any) { console.warn("[scripture-blog] dall-e-3 실패:", e.message?.slice(0, 80)); }
+      } catch (e: any) { console.warn(`[scripture-blog] OpenAI ${model} 실패:`, e.message?.slice(0, 80)); }
+    }
   }
 
   // 2차: Gemini
@@ -64,13 +69,12 @@ async function generateBlogImageBase64(prompt: string): Promise<string | null> {
         });
         const res = await gemini.models.generateContent({
           model,
-          contents: [{ role: "user", parts: [{ text: prompt }] }],
+          contents: [{ role: "user", parts: [{ text: fullPrompt }] }],
           config: { responseModalities: [Modality.TEXT, Modality.IMAGE] },
         });
         const part = res.candidates?.[0]?.content?.parts?.find((p: any) => p.inlineData);
         if (part?.inlineData?.data) {
-          const mimeType = part.inlineData.mimeType || "image/png";
-          return `data:${mimeType};base64,${part.inlineData.data}`;
+          return `data:${part.inlineData.mimeType || "image/png"};base64,${part.inlineData.data}`;
         }
       } catch (e: any) { console.warn(`[scripture-blog] Gemini ${model} 실패:`, e.message?.slice(0, 80)); }
     }

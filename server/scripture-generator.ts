@@ -1,7 +1,7 @@
 /**
  * scripture-generator.ts
  * 메모리 전용 처리 — 파일시스템 없음 (Render ephemeral FS 대응)
- * 이미지: base64 생성 → Canvas 오버레이 → 썸네일 DB 저장
+ * 이미지: ai.ts의 generateImage()와 동일한 로직 사용 (검증된 방법)
  */
 
 import OpenAI from "openai";
@@ -17,37 +17,64 @@ function parseJsonSafe<T>(content: string | null | undefined, defaults: T): T {
   catch { return defaults; }
 }
 
-// ─── 이미지 생성 (base64 반환, 파일 저장 없음) ───────────────────────────────
+// ─── 이미지 생성 (ai.ts와 동일한 방식 — 검증된 로직) ────────────────────────
 
 async function generateScriptureImageBase64(prompt: string): Promise<string | null> {
-  // 1차: OpenAI dall-e-3
+  const fullPrompt = (
+    "STRICT RULE: absolutely NO people, NO humans, NO faces, NO body parts. " +
+    prompt.slice(0, 700) +
+    " Photorealistic, high quality, no text in image."
+  ).trim();
+
+  // 1차: OpenAI (gpt-image-1-mini → gpt-image-1 → dall-e-3 → dall-e-2)
   if (process.env.OPENAI_API_KEY) {
-    try {
-      const openai = getOpenAI();
-      const response = await openai.images.generate({
-        model: "dall-e-3",
-        prompt: (prompt + " No text in image. High quality, photorealistic.").slice(0, 1000),
-        n: 1,
-        size: "1024x1024",
-      });
-      const imageUrl = response.data?.[0]?.url;
-      if (imageUrl) {
-        const imgRes = await fetch(imageUrl);
-        if (imgRes.ok) {
-          const buf = Buffer.from(await imgRes.arrayBuffer());
-          return `data:image/png;base64,${buf.toString("base64")}`;
+    const openaiModels = [
+      "gpt-image-1-mini",
+      "gpt-image-1",
+      "dall-e-3",
+      "dall-e-2",
+    ] as const;
+
+    for (const model of openaiModels) {
+      try {
+        console.log(`[scripture] OpenAI ${model} 시도...`);
+        const openai = getOpenAI();
+        const params: any = { model, prompt: fullPrompt.slice(0, 1000), n: 1, size: "1024x1024" };
+        // dall-e-3/dall-e-2 URL 방식, gpt-image-1* b64_json 방식
+        if (model.startsWith("gpt-image")) params.response_format = "b64_json";
+
+        const response = await openai.images.generate(params);
+        const b64 = response.data?.[0]?.b64_json;
+        const url = response.data?.[0]?.url;
+
+        if (b64) {
+          console.log(`[scripture] OpenAI ${model} 성공 (base64)`);
+          return `data:image/png;base64,${b64}`;
         }
+        if (url) {
+          console.log(`[scripture] OpenAI ${model} 성공 (url fetch)`);
+          const imgRes = await fetch(url);
+          if (imgRes.ok) {
+            const buf = Buffer.from(await imgRes.arrayBuffer());
+            return `data:image/png;base64,${buf.toString("base64")}`;
+          }
+        }
+      } catch (err: any) {
+        console.warn(`[scripture] OpenAI ${model} 실패:`, err?.message?.slice(0, 100));
       }
-    } catch (err: any) {
-      console.warn("[scripture-generator] dall-e-3 실패:", err.message?.slice(0, 80));
     }
   }
 
-  // 2차: Gemini image models
+  // 2차: Gemini (v1alpha image generation models)
   if (process.env.GEMINI_API_KEY) {
-    const models = ["gemini-2.0-flash-preview-image-generation", "gemini-2.0-flash-exp-image-generation"];
-    for (const model of models) {
+    const geminiModels = [
+      "gemini-2.0-flash-preview-image-generation",
+      "gemini-2.0-flash-exp-image-generation",
+    ];
+
+    for (const model of geminiModels) {
       try {
+        console.log(`[scripture] Gemini ${model} 시도...`);
         const { GoogleGenAI, Modality } = await import("@google/genai");
         const gemini = new GoogleGenAI({
           apiKey: process.env.GEMINI_API_KEY,
@@ -55,20 +82,22 @@ async function generateScriptureImageBase64(prompt: string): Promise<string | nu
         });
         const res = await gemini.models.generateContent({
           model,
-          contents: [{ role: "user", parts: [{ text: prompt }] }],
+          contents: [{ role: "user", parts: [{ text: fullPrompt }] }],
           config: { responseModalities: [Modality.TEXT, Modality.IMAGE] },
         });
         const part = res.candidates?.[0]?.content?.parts?.find((p: any) => p.inlineData);
         if (part?.inlineData?.data) {
           const mimeType = part.inlineData.mimeType || "image/png";
+          console.log(`[scripture] Gemini ${model} 성공`);
           return `data:${mimeType};base64,${part.inlineData.data}`;
         }
       } catch (err: any) {
-        console.warn(`[scripture-generator] Gemini ${model} 실패:`, err.message?.slice(0, 80));
+        console.warn(`[scripture] Gemini ${model} 실패:`, err?.message?.slice(0, 100));
       }
     }
   }
 
+  console.warn("[scripture] 모든 이미지 생성 실패 — Unsplash 폴백 사용");
   return null;
 }
 
@@ -229,8 +258,10 @@ JSON: { "caption": "캡션 전문", "hashtags": ["#해시태그1",...(8-10개)] 
   } catch {}
 
   // ── Step 4: 이미지 생성 + Canvas 오버레이 (메모리 전용) ─────────────────
-  const imagePrompt = `Christian devotional image. Peaceful spiritual atmosphere, soft golden morning light, open Bible on wooden table or serene nature landscape. Warm colors, high quality, minimalist, square 1:1 format. DO NOT include any text.`;
-  let imageUrl = "https://images.unsplash.com/photo-1499652848871-1527a310b13a?w=1080&h=1080&fit=crop";
+  const imagePrompt = `Christian devotional background. Peaceful spiritual atmosphere, soft golden morning light, open Bible on wooden table or serene nature landscape with warm light. Square format. Calming colors, high quality, minimalist.`;
+
+  const UNSPLASH_FALLBACK = "https://images.unsplash.com/photo-1499652848871-1527a310b13a?w=1080&h=1080&fit=crop";
+  let imageUrl = UNSPLASH_FALLBACK;
   let imageBase64: string | undefined;
   let thumbnailBase64: string | undefined;
 
@@ -240,11 +271,12 @@ JSON: { "caption": "캡션 전문", "hashtags": ["#해시태그1",...(8-10개)] 
       const { addVerseOverlayToBase64, createSmallThumbnail } = await import("./scripture-canvas");
       imageBase64 = await addVerseOverlayToBase64(rawBase64, textContent.verseReference, textContent.verseContent);
       thumbnailBase64 = await createSmallThumbnail(imageBase64);
-      imageUrl = "";
+      imageUrl = ""; // base64 사용 시 imageUrl 불필요
     } catch (err: any) {
-      console.warn("[scripture-generator] canvas 처리 실패:", err.message);
+      console.warn("[scripture-generator] canvas 처리 실패 (오버레이 없이 사용):", err.message?.slice(0, 80));
       imageBase64 = rawBase64;
-      thumbnailBase64 = rawBase64.substring(0, 5000); // rough fallback
+      // 썸네일은 canvas 없이 그냥 rawBase64 사용 (크기가 크더라도 표시는 됨)
+      thumbnailBase64 = undefined;
     }
   }
 
