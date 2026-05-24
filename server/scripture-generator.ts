@@ -194,21 +194,24 @@ async function generateScriptureImageFile(
 
   // Gemini 폴백
   if (process.env.GEMINI_API_KEY) {
-    try {
-      const { GoogleGenAI, Modality } = await import("@google/genai");
-      const gemini = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-      const res = await gemini.models.generateContent({
-        model: "gemini-2.0-flash-exp-image-generation",
-        contents: [{ role: "user", parts: [{ text: prompt }] }],
-        config: { responseModalities: [Modality.TEXT, Modality.IMAGE] },
-      });
-      const imagePart = res.candidates?.[0]?.content?.parts?.find((p: any) => p.inlineData);
-      if (imagePart?.inlineData?.data) {
-        await fs.writeFile(filePath, Buffer.from(imagePart.inlineData.data, "base64"));
-        return filePath;
+    const geminiModels = ["gemini-2.0-flash-preview-image-generation", "gemini-2.0-flash-exp-image-generation"];
+    for (const model of geminiModels) {
+      try {
+        const { GoogleGenAI, Modality } = await import("@google/genai");
+        const gemini = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY, httpOptions: { apiVersion: "v1alpha" } });
+        const res = await gemini.models.generateContent({
+          model,
+          contents: [{ role: "user", parts: [{ text: prompt }] }],
+          config: { responseModalities: [Modality.TEXT, Modality.IMAGE] },
+        });
+        const imagePart = res.candidates?.[0]?.content?.parts?.find((p: any) => p.inlineData);
+        if (imagePart?.inlineData?.data) {
+          await fs.writeFile(filePath, Buffer.from(imagePart.inlineData.data, "base64"));
+          return filePath;
+        }
+      } catch (err: any) {
+        console.warn(`[scripture-generator] Gemini ${model} 실패:`, err.message?.slice(0, 80));
       }
-    } catch (err: any) {
-      console.warn("[scripture-generator] Gemini 이미지 생성 실패:", err.message);
     }
   }
 
