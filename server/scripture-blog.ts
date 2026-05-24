@@ -1,12 +1,10 @@
 /**
  * scripture-blog.ts
- * Holy-AI-Creator blog-content-generator.ts 기반.
- * 성경 말씀 기반 네이버 블로그 콘텐츠 + 관련 구절 3개 이미지 생성.
+ * 메모리 전용 처리 — 파일시스템 없음 (Render ephemeral FS 대응)
+ * 블로그 이미지 3장: base64 생성 → Canvas 오버레이 → base64 반환
  */
 
 import OpenAI from "openai";
-import * as fs from "fs/promises";
-import * as path from "path";
 
 function getOpenAI() {
   if (!process.env.OPENAI_API_KEY) throw new Error("OPENAI_API_KEY 미설정");
@@ -27,7 +25,58 @@ export interface ScriptureBlogContent {
   imageRecommendations: { description: string; altText: string }[];
   internalLinkTopics: string[];
   hashtags: string[];
-  images: string[];     // 서버 서빙 경로 (/generated/...)
+  images: string[];  // base64 data URLs
+}
+
+// ── 이미지 생성 (base64 반환, 파일 저장 없음) ─────────────────────────────────
+
+async function generateBlogImageBase64(prompt: string): Promise<string | null> {
+  // 1차: OpenAI dall-e-3
+  if (process.env.OPENAI_API_KEY) {
+    try {
+      const openai = getOpenAI();
+      const res = await openai.images.generate({
+        model: "dall-e-3",
+        prompt: (prompt + " No text in image. Photorealistic.").slice(0, 1000),
+        n: 1,
+        size: "1024x1024",
+      });
+      const imageUrl = res.data?.[0]?.url;
+      if (imageUrl) {
+        const imgRes = await fetch(imageUrl);
+        if (imgRes.ok) {
+          const buf = Buffer.from(await imgRes.arrayBuffer());
+          return `data:image/png;base64,${buf.toString("base64")}`;
+        }
+      }
+    } catch (e: any) { console.warn("[scripture-blog] dall-e-3 실패:", e.message?.slice(0, 80)); }
+  }
+
+  // 2차: Gemini
+  if (process.env.GEMINI_API_KEY) {
+    const models = ["gemini-2.0-flash-preview-image-generation", "gemini-2.0-flash-exp-image-generation"];
+    for (const model of models) {
+      try {
+        const { GoogleGenAI, Modality } = await import("@google/genai");
+        const gemini = new GoogleGenAI({
+          apiKey: process.env.GEMINI_API_KEY,
+          httpOptions: { apiVersion: "v1alpha" },
+        });
+        const res = await gemini.models.generateContent({
+          model,
+          contents: [{ role: "user", parts: [{ text: prompt }] }],
+          config: { responseModalities: [Modality.TEXT, Modality.IMAGE] },
+        });
+        const part = res.candidates?.[0]?.content?.parts?.find((p: any) => p.inlineData);
+        if (part?.inlineData?.data) {
+          const mimeType = part.inlineData.mimeType || "image/png";
+          return `data:${mimeType};base64,${part.inlineData.data}`;
+        }
+      } catch (e: any) { console.warn(`[scripture-blog] Gemini ${model} 실패:`, e.message?.slice(0, 80)); }
+    }
+  }
+
+  return null;
 }
 
 // ── 관련 성경 구절 2개 추천 ──────────────────────────────────────────────────
@@ -66,56 +115,7 @@ JSON: { "verses": [{"reference":"...","content":"전체 원문"},{"reference":".
   }
 }
 
-// ── 이미지 생성 (gpt-image-1 → Gemini) ──────────────────────────────────────
-
-async function generateBlogImageFile(prompt: string, filename: string): Promise<string | null> {
-  const generatedDir = path.join(process.cwd(), "client", "public", "generated");
-  await fs.mkdir(generatedDir, { recursive: true });
-  const filePath = path.join(generatedDir, filename);
-
-  if (process.env.OPENAI_API_KEY) {
-    try {
-      const openai = getOpenAI();
-      const res = await openai.images.generate({
-        model: "dall-e-3",
-        prompt: (prompt + " No text in image. Photorealistic.").slice(0, 1000),
-        n: 1, size: "1024x1024",
-      });
-      const imageUrl = res.data?.[0]?.url;
-      if (imageUrl) {
-        const imgRes = await fetch(imageUrl);
-        if (imgRes.ok) {
-          await fs.writeFile(filePath, Buffer.from(await imgRes.arrayBuffer()));
-          return filePath;
-        }
-      }
-    } catch (e: any) { console.warn("[scripture-blog] dall-e-3:", e.message); }
-  }
-
-  if (process.env.GEMINI_API_KEY) {
-    const geminiModels = ["gemini-2.0-flash-preview-image-generation", "gemini-2.0-flash-exp-image-generation"];
-    for (const model of geminiModels) {
-      try {
-        const { GoogleGenAI, Modality } = await import("@google/genai");
-        const gemini = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY, httpOptions: { apiVersion: "v1alpha" } });
-        const res = await gemini.models.generateContent({
-          model,
-          contents: [{ role: "user", parts: [{ text: prompt }] }],
-          config: { responseModalities: [Modality.TEXT, Modality.IMAGE] },
-        });
-        const part = res.candidates?.[0]?.content?.parts?.find((p: any) => p.inlineData);
-        if (part?.inlineData?.data) {
-          await fs.writeFile(filePath, Buffer.from(part.inlineData.data, "base64"));
-          return filePath;
-        }
-      } catch (e: any) { console.warn(`[scripture-blog] Gemini ${model}:`, e.message?.slice(0, 80)); }
-    }
-  }
-
-  return null;
-}
-
-// ── 블로그 이미지 3장 생성 + Canvas 오버레이 ─────────────────────────────────
+// ── 블로그 이미지 3장 생성 (base64 반환) ──────────────────────────────────────
 
 async function generateBlogImages(
   mainRef: string,
@@ -132,28 +132,28 @@ async function generateBlogImages(
   ];
 
   const backgrounds = [
-    "soft golden morning light through window, open Bible on wooden table, warm serene atmosphere, calming pastel colors, leave bottom 35% clear for text",
-    "gentle sunrise over calm water, peaceful nature landscape, warm golden hour lighting, spiritual mood, leave bottom 35% clear for text",
-    "beautiful flower arrangement with soft bokeh, morning dew, warm natural light, clean modern aesthetic, leave bottom 35% clear for text",
+    "soft golden morning light through window, open Bible on wooden table, warm serene atmosphere, calming pastel colors",
+    "gentle sunrise over calm water, peaceful nature landscape, warm golden hour lighting, spiritual mood",
+    "beautiful flower arrangement with soft bokeh, morning dew, warm natural light, clean modern aesthetic",
   ];
 
+  const { addVerseOverlayToBase64 } = await import("./scripture-canvas");
   const images: string[] = [];
 
   for (let i = 0; i < 3; i++) {
     const verse = allVerses[i];
     const prompt = `Christian devotional image. Background: ${backgrounds[i]}. Minimalist design, square 1:1, no text in image.`;
-    const filename = `blog-scripture-${Date.now()}-${i + 1}.png`;
 
-    const filePath = await generateBlogImageFile(prompt, filename);
-    if (filePath) {
-      // Canvas 텍스트 오버레이
+    const rawBase64 = await generateBlogImageBase64(prompt);
+    if (rawBase64) {
       try {
-        const { addVerseOverlayPublic } = await import("./scripture-canvas");
-        await addVerseOverlayPublic(filePath, verse.reference, verse.content);
-      } catch {}
-      images.push(`/generated/${filename}`);
+        const withOverlay = await addVerseOverlayToBase64(rawBase64, verse.reference, verse.content);
+        images.push(withOverlay);
+      } catch {
+        images.push(rawBase64);
+      }
     }
-    // API 레이트 리밋 방지
+
     if (i < 2) await new Promise((r) => setTimeout(r, 1500));
   }
 
@@ -231,7 +231,7 @@ JSON:
     if (!Array.isArray(parsed.hashtags)) parsed.hashtags = [];
     blogContent = parsed.content || "";
 
-    // 블로그 이미지 3장 생성
+    // 블로그 이미지 3장 생성 (base64)
     const images = await generateBlogImages(verseReference, verseContent, coreMessage, blogContent);
 
     return { ...parsed, images };

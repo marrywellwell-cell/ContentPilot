@@ -44,6 +44,7 @@ interface GeneratedContent {
   instagramHashtags: string[];
   imageUrls: string[];
   imageUrl: string;
+  imageBase64?: string;
   imagePrompt?: string;
   caption: string;
   hashtags: string[];
@@ -390,7 +391,8 @@ function ResultsDisplay({
 
   const ref = results.verseReference || results.bibleReference || "";
   const verse = results.verseContent || results.bibleVerse || "";
-  const imageUrl = results.imageUrl || results.imageUrls?.[0] || "";
+  // imageBase64(풀사이즈) 우선 표시, 없으면 imageUrls[0](썸네일 or URL)
+  const imageUrl = results.imageBase64 || results.imageUrl || results.imageUrls?.[0] || "";
   const caption = results.caption || results.instagramCaption || "";
   const hashtags = results.hashtags?.length ? results.hashtags : (results.instagramHashtags || []);
 

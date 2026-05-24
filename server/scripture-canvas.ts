@@ -1,8 +1,6 @@
 /**
- * scripture-canvas.ts — Canvas 텍스트 오버레이 공유 유틸
- * scripture-generator.ts와 scripture-blog.ts에서 공통으로 사용
+ * scripture-canvas.ts — Canvas 텍스트 오버레이 공유 유틸 (메모리 처리, 파일시스템 불필요)
  */
-import * as fs from "fs/promises";
 import * as path from "path";
 
 let fontsRegistered = false;
@@ -46,17 +44,22 @@ function wrapText(ctx: any, text: string, maxWidth: number, maxLines = 8): strin
   return lines.slice(0, maxLines);
 }
 
-export async function addVerseOverlayPublic(
-  imagePath: string,
+function base64ToBuffer(dataUrl: string): Buffer {
+  const b64 = dataUrl.includes(",") ? dataUrl.split(",")[1] : dataUrl;
+  return Buffer.from(b64, "base64");
+}
+
+// base64 이미지에 말씀 텍스트 오버레이 → base64 반환 (파일 I/O 없음)
+export async function addVerseOverlayToBase64(
+  imageBase64: string,
   verseReference: string,
   verseContent: string
-): Promise<void> {
+): Promise<string> {
   try {
     await ensureFonts();
     const { createCanvas, loadImage } = await import("canvas");
 
-    const imageBuffer = await fs.readFile(imagePath);
-    const image = await loadImage(imageBuffer);
+    const image = await loadImage(base64ToBuffer(imageBase64));
     const canvas = createCanvas(image.width, image.height);
     const ctx = canvas.getContext("2d");
     ctx.drawImage(image, 0, 0);
@@ -71,10 +74,10 @@ export async function addVerseOverlayPublic(
     let lines: string[] = [];
     let lineHeight = contentFontSize * 1.4;
 
-    for (let fs2 = 36; fs2 >= 22; fs2 -= 2) {
-      contentFontSize = fs2;
-      refFontSize = Math.max(fs2 - 6, 20);
-      lineHeight = fs2 * 1.4;
+    for (let sz = 36; sz >= 22; sz -= 2) {
+      contentFontSize = sz;
+      refFontSize = Math.max(sz - 6, 20);
+      lineHeight = sz * 1.4;
       ctx.font = `bold ${contentFontSize}px "NotoSansKR"`;
       lines = wrapText(ctx, verseContent, maxWidth, 12);
       if (lines.length * lineHeight + refFontSize + 60 <= image.height * 0.7 && lines.length <= 8) break;
@@ -126,8 +129,48 @@ export async function addVerseOverlayPublic(
     ctx.textBaseline = "bottom";
     ctx.fillText("AI 생성 이미지", image.width - 20, image.height - 15);
 
-    await fs.writeFile(imagePath, canvas.toBuffer("image/png"));
+    return `data:image/png;base64,${canvas.toBuffer("image/png").toString("base64")}`;
   } catch (err) {
     console.error("[scripture-canvas] overlay 실패:", err);
+    return imageBase64;
+  }
+}
+
+// 200×200 JPEG 썸네일 생성 (~8KB) — DB 저장용
+export async function createSmallThumbnail(imageBase64: string, size = 200): Promise<string> {
+  try {
+    const { createCanvas, loadImage } = await import("canvas");
+    const image = await loadImage(base64ToBuffer(imageBase64));
+
+    // 정사각형 크롭
+    const side = Math.min(image.width, image.height);
+    const sx = (image.width - side) / 2;
+    const sy = (image.height - side) / 2;
+
+    const canvas = createCanvas(size, size);
+    const ctx = canvas.getContext("2d");
+    ctx.drawImage(image, sx, sy, side, side, 0, 0, size, size);
+
+    return `data:image/jpeg;base64,${canvas.toBuffer("image/jpeg", { quality: 0.72 }).toString("base64")}`;
+  } catch {
+    return "";
+  }
+}
+
+// 파일 기반 오버레이 (하위 호환 — 기존 scripture-blog.ts에서 호출)
+export async function addVerseOverlayPublic(
+  imagePath: string,
+  verseReference: string,
+  verseContent: string
+): Promise<void> {
+  try {
+    const fs = await import("fs/promises");
+    const buf = await fs.readFile(imagePath);
+    const base64 = `data:image/png;base64,${buf.toString("base64")}`;
+    const result = await addVerseOverlayToBase64(base64, verseReference, verseContent);
+    const resultBuf = Buffer.from(result.split(",")[1], "base64");
+    await fs.writeFile(imagePath, resultBuf);
+  } catch (err) {
+    console.error("[scripture-canvas] file overlay 실패:", err);
   }
 }

@@ -1,15 +1,10 @@
 /**
  * scripture-generator.ts
- * Holy-AI-Creator content-generator.ts 기반으로 ContentPilot에 통합.
- * - 멀티스텝 AI 분석 (긴 영상 지원)
- * - Canvas 한국어 텍스트 오버레이
- * - OpenAI gpt-image-1 이미지 생성 (없으면 Gemini 폴백)
- * - 개역개정 성경 정확도 강화
+ * 메모리 전용 처리 — 파일시스템 없음 (Render ephemeral FS 대응)
+ * 이미지: base64 생성 → Canvas 오버레이 → 썸네일 DB 저장
  */
 
 import OpenAI from "openai";
-import * as fs from "fs/promises";
-import * as path from "path";
 
 function getOpenAI() {
   if (!process.env.OPENAI_API_KEY) throw new Error("OPENAI_API_KEY 미설정");
@@ -22,153 +17,10 @@ function parseJsonSafe<T>(content: string | null | undefined, defaults: T): T {
   catch { return defaults; }
 }
 
-// ─── Canvas 텍스트 오버레이 ───────────────────────────────────────────────────
+// ─── 이미지 생성 (base64 반환, 파일 저장 없음) ───────────────────────────────
 
-async function addVerseOverlay(
-  imagePath: string,
-  verseReference: string,
-  verseContent: string
-): Promise<void> {
-  try {
-    const { createCanvas, loadImage, registerFont } = await import("canvas");
-
-    const fontDir = path.join(process.cwd(), "server", "fonts");
-    try {
-      registerFont(path.join(fontDir, "NotoSansKR-Bold.ttf"), { family: "NotoSansKR", weight: "bold" });
-      registerFont(path.join(fontDir, "NotoSansKR-Regular.ttf"), { family: "NotoSansKR", weight: "normal" });
-    } catch {}
-
-    const imageBuffer = await fs.readFile(imagePath);
-    const image = await loadImage(imageBuffer);
-    const canvas = createCanvas(image.width, image.height);
-    const ctx = canvas.getContext("2d");
-    ctx.drawImage(image, 0, 0);
-
-    const padding = 60;
-    const maxWidth = image.width - padding * 2;
-    const centerX = image.width / 2;
-    const centerY = image.height / 2;
-    const fontFamily = "NotoSansKR";
-
-    let contentFontSize = 36;
-    let refFontSize = 30;
-    let lines: string[] = [];
-    let lineHeight = contentFontSize * 1.4;
-
-    for (let fontSize = 36; fontSize >= 22; fontSize -= 2) {
-      contentFontSize = fontSize;
-      refFontSize = Math.max(fontSize - 6, 20);
-      lineHeight = fontSize * 1.4;
-      ctx.font = `bold ${contentFontSize}px "${fontFamily}"`;
-      lines = wrapText(ctx, verseContent, maxWidth, 12);
-      const totalHeight = lines.length * lineHeight + refFontSize + 60;
-      if (totalHeight <= image.height * 0.7 && lines.length <= 8) break;
-    }
-
-    if (lines.length > 8) {
-      lines = lines.slice(0, 8);
-      lines[7] = lines[7].slice(0, -3) + "...";
-    }
-
-    const totalTextHeight = lines.length * lineHeight + refFontSize + 50;
-    const textStartY = centerY - totalTextHeight / 2 + lineHeight / 2;
-    const boxPadding = 35;
-    const boxY = textStartY - lineHeight / 2 - boxPadding;
-    const boxHeight = totalTextHeight + boxPadding * 2;
-    const radius = 20;
-    const boxX = padding - boxPadding;
-    const boxWidth = image.width - (padding - boxPadding) * 2;
-
-    ctx.fillStyle = "rgba(0, 0, 0, 0.65)";
-    ctx.beginPath();
-    ctx.moveTo(boxX + radius, boxY);
-    ctx.lineTo(boxX + boxWidth - radius, boxY);
-    ctx.quadraticCurveTo(boxX + boxWidth, boxY, boxX + boxWidth, boxY + radius);
-    ctx.lineTo(boxX + boxWidth, boxY + boxHeight - radius);
-    ctx.quadraticCurveTo(boxX + boxWidth, boxY + boxHeight, boxX + boxWidth - radius, boxY + boxHeight);
-    ctx.lineTo(boxX + radius, boxY + boxHeight);
-    ctx.quadraticCurveTo(boxX, boxY + boxHeight, boxX, boxY + boxHeight - radius);
-    ctx.lineTo(boxX, boxY + radius);
-    ctx.quadraticCurveTo(boxX, boxY, boxX + radius, boxY);
-    ctx.closePath();
-    ctx.fill();
-
-    ctx.fillStyle = "#ffffff";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.font = `bold ${contentFontSize}px "${fontFamily}"`;
-    ctx.shadowColor = "rgba(0,0,0,0.8)";
-    ctx.shadowBlur = 6;
-    ctx.shadowOffsetX = 2;
-    ctx.shadowOffsetY = 2;
-
-    lines.forEach((line, i) => ctx.fillText(line, centerX, textStartY + i * lineHeight));
-
-    ctx.font = `${refFontSize}px "${fontFamily}"`;
-    ctx.fillStyle = "#e0e0e0";
-    ctx.fillText(`- ${verseReference} -`, centerX, textStartY + lines.length * lineHeight + 35);
-
-    ctx.shadowColor = "transparent";
-    ctx.shadowBlur = 0;
-    ctx.shadowOffsetX = 0;
-    ctx.shadowOffsetY = 0;
-
-    ctx.font = `16px "${fontFamily}"`;
-    ctx.fillStyle = "rgba(255,255,255,0.6)";
-    ctx.textAlign = "right";
-    ctx.textBaseline = "bottom";
-    ctx.fillText("AI 생성 이미지", image.width - 20, image.height - 15);
-
-    await fs.writeFile(imagePath, canvas.toBuffer("image/png"));
-  } catch (error) {
-    console.error("[scripture-generator] Canvas overlay 실패:", error);
-  }
-}
-
-function wrapText(ctx: any, text: string, maxWidth: number, maxLines = 8): string[] {
-  if (!text?.trim()) return [""];
-  const words = text.replace(/\s+/g, " ").trim().split(" ");
-  const lines: string[] = [];
-  let currentLine = "";
-
-  for (const word of words) {
-    const testLine = currentLine ? `${currentLine} ${word}` : word;
-    if (ctx.measureText(testLine).width > maxWidth && currentLine) {
-      lines.push(currentLine);
-      if (ctx.measureText(word).width > maxWidth) {
-        let remaining = word;
-        while (remaining.length > 0) {
-          let charLine = "";
-          for (const char of remaining) {
-            if (ctx.measureText(charLine + char).width > maxWidth && charLine.length > 0) break;
-            charLine += char;
-          }
-          lines.push(charLine);
-          remaining = remaining.slice(charLine.length);
-        }
-        currentLine = "";
-      } else {
-        currentLine = word;
-      }
-    } else {
-      currentLine = testLine;
-    }
-  }
-  if (currentLine) lines.push(currentLine);
-  return lines.slice(0, maxLines);
-}
-
-// ─── 이미지 생성 (gpt-image-1 → Gemini 폴백) ─────────────────────────────────
-
-async function generateScriptureImageFile(
-  prompt: string,
-  filename: string
-): Promise<string | null> {
-  const generatedDir = path.join(process.cwd(), "client", "public", "generated");
-  await fs.mkdir(generatedDir, { recursive: true });
-  const filePath = path.join(generatedDir, filename);
-
-  // gpt-image-1 시도
+async function generateScriptureImageBase64(prompt: string): Promise<string | null> {
+  // 1차: OpenAI dall-e-3
   if (process.env.OPENAI_API_KEY) {
     try {
       const openai = getOpenAI();
@@ -182,32 +34,34 @@ async function generateScriptureImageFile(
       if (imageUrl) {
         const imgRes = await fetch(imageUrl);
         if (imgRes.ok) {
-          const buffer = await imgRes.arrayBuffer();
-          await fs.writeFile(filePath, Buffer.from(buffer));
-          return filePath;
+          const buf = Buffer.from(await imgRes.arrayBuffer());
+          return `data:image/png;base64,${buf.toString("base64")}`;
         }
       }
     } catch (err: any) {
-      console.warn("[scripture-generator] gpt-image-1 실패:", err.message);
+      console.warn("[scripture-generator] dall-e-3 실패:", err.message?.slice(0, 80));
     }
   }
 
-  // Gemini 폴백
+  // 2차: Gemini image models
   if (process.env.GEMINI_API_KEY) {
-    const geminiModels = ["gemini-2.0-flash-preview-image-generation", "gemini-2.0-flash-exp-image-generation"];
-    for (const model of geminiModels) {
+    const models = ["gemini-2.0-flash-preview-image-generation", "gemini-2.0-flash-exp-image-generation"];
+    for (const model of models) {
       try {
         const { GoogleGenAI, Modality } = await import("@google/genai");
-        const gemini = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY, httpOptions: { apiVersion: "v1alpha" } });
+        const gemini = new GoogleGenAI({
+          apiKey: process.env.GEMINI_API_KEY,
+          httpOptions: { apiVersion: "v1alpha" },
+        });
         const res = await gemini.models.generateContent({
           model,
           contents: [{ role: "user", parts: [{ text: prompt }] }],
           config: { responseModalities: [Modality.TEXT, Modality.IMAGE] },
         });
-        const imagePart = res.candidates?.[0]?.content?.parts?.find((p: any) => p.inlineData);
-        if (imagePart?.inlineData?.data) {
-          await fs.writeFile(filePath, Buffer.from(imagePart.inlineData.data, "base64"));
-          return filePath;
+        const part = res.candidates?.[0]?.content?.parts?.find((p: any) => p.inlineData);
+        if (part?.inlineData?.data) {
+          const mimeType = part.inlineData.mimeType || "image/png";
+          return `data:${mimeType};base64,${part.inlineData.data}`;
         }
       } catch (err: any) {
         console.warn(`[scripture-generator] Gemini ${model} 실패:`, err.message?.slice(0, 80));
@@ -218,15 +72,16 @@ async function generateScriptureImageFile(
   return null;
 }
 
-// ─── AI 콘텐츠 생성 (Holy-AI-Creator 멀티스텝 방식) ─────────────────────────
+// ─── AI 콘텐츠 생성 ──────────────────────────────────────────────────────────
 
 export interface ScriptureGeneratedContent {
   summary: string[];
   coreMessage: string;
   verseReference: string;
   verseContent: string;
-  imageUrl: string;         // 서버 서빙 경로
-  imageBase64?: string;     // DB 저장용 base64
+  imageUrl: string;
+  imageBase64?: string;
+  thumbnailBase64?: string;
   caption: string;
   hashtags: string[];
   instagramSlides: string[];
@@ -298,7 +153,7 @@ export async function generateScriptureContent(
 - 영상에서 설교자가 직접 언급한 성경 구절을 찾아 추출
 - 반드시 개역개정(개역개정한글판) 번역 원문을 사용
 - verseContent에 구절 전체를 빠짐없이 기재 (생략 금지)
-- 단어 변형 금지 (예: "흩어"→"후히" 불가)
+- 단어 변형 금지
 
 출력 JSON:
 {
@@ -373,24 +228,24 @@ JSON: { "caption": "캡션 전문", "hashtags": ["#해시태그1",...(8-10개)] 
     hashtags = Array.isArray(parsed.hashtags) ? parsed.hashtags : [];
   } catch {}
 
-  // ── Step 4: 이미지 생성 + Canvas 오버레이 ────────────────────────────────
+  // ── Step 4: 이미지 생성 + Canvas 오버레이 (메모리 전용) ─────────────────
   const imagePrompt = `Christian devotional image. Peaceful spiritual atmosphere, soft golden morning light, open Bible on wooden table or serene nature landscape. Warm colors, high quality, minimalist, square 1:1 format. DO NOT include any text.`;
-  const filename = `scripture-${Date.now()}.png`;
-  let imageUrl = "";
+  let imageUrl = "https://images.unsplash.com/photo-1499652848871-1527a310b13a?w=1080&h=1080&fit=crop";
   let imageBase64: string | undefined;
+  let thumbnailBase64: string | undefined;
 
-  const filePath = await generateScriptureImageFile(imagePrompt, filename);
-  if (filePath) {
-    // Canvas 텍스트 오버레이
-    await addVerseOverlay(filePath, textContent.verseReference, textContent.verseContent);
-    imageUrl = `/generated/${filename}`;
-    // base64 저장 (DB용)
+  const rawBase64 = await generateScriptureImageBase64(imagePrompt);
+  if (rawBase64) {
     try {
-      const buf = await fs.readFile(filePath);
-      imageBase64 = `data:image/png;base64,${buf.toString("base64")}`;
-    } catch {}
-  } else {
-    imageUrl = "https://images.unsplash.com/photo-1499652848871-1527a310b13a?w=1080&h=1080&fit=crop";
+      const { addVerseOverlayToBase64, createSmallThumbnail } = await import("./scripture-canvas");
+      imageBase64 = await addVerseOverlayToBase64(rawBase64, textContent.verseReference, textContent.verseContent);
+      thumbnailBase64 = await createSmallThumbnail(imageBase64);
+      imageUrl = "";
+    } catch (err: any) {
+      console.warn("[scripture-generator] canvas 처리 실패:", err.message);
+      imageBase64 = rawBase64;
+      thumbnailBase64 = rawBase64.substring(0, 5000); // rough fallback
+    }
   }
 
   const hashtagStr = hashtags.join(" ");
@@ -403,6 +258,7 @@ JSON: { "caption": "캡션 전문", "hashtags": ["#해시태그1",...(8-10개)] 
     verseContent: textContent.verseContent,
     imageUrl,
     imageBase64,
+    thumbnailBase64,
     caption: fullCaption,
     hashtags,
     instagramSlides,
