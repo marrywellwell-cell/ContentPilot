@@ -377,6 +377,7 @@ function BlogResultCard({ blog }: { blog: BlogContent }) {
 
 function ResultsDisplay({
   results, onRegenerate, onSave, isSaving, isSaved, savedContentId, onYouTubeUpload,
+  blog, onBlogGenerate, isBlogGenerating,
 }: {
   results: GeneratedContent;
   onRegenerate: () => void;
@@ -385,35 +386,17 @@ function ResultsDisplay({
   isSaved: boolean;
   savedContentId?: string;
   onYouTubeUpload?: () => void;
+  blog: BlogContent | null;
+  onBlogGenerate: () => void;
+  isBlogGenerating: boolean;
 }) {
   const { toast } = useToast();
-  const [blog, setBlog] = useState<BlogContent | null>(null);
 
   const ref = results.verseReference || results.bibleReference || "";
   const verse = results.verseContent || results.bibleVerse || "";
-  // imageBase64(풀사이즈) 우선 표시, 없으면 imageUrls[0](썸네일 or URL)
   const imageUrl = results.imageBase64 || results.imageUrl || results.imageUrls?.[0] || "";
   const caption = results.caption || results.instagramCaption || "";
   const hashtags = results.hashtags?.length ? results.hashtags : (results.instagramHashtags || []);
-
-  const blogMutation = useMutation({
-    mutationFn: async () => {
-      return apiRequest("/api/youtube-scripture/blog", {
-        method: "POST",
-        body: JSON.stringify({
-          summary: results.summary,
-          coreMessage: results.coreMessage,
-          verseReference: ref,
-          verseContent: verse,
-        }),
-      }) as Promise<BlogContent>;
-    },
-    onSuccess: (data) => {
-      setBlog(data);
-      toast({ title: "블로그 생성 완료!" });
-    },
-    onError: (e: Error) => toast({ title: "블로그 생성 실패", description: e.message, variant: "destructive" }),
-  });
 
   return (
     <div className="space-y-6">
@@ -423,17 +406,12 @@ function ResultsDisplay({
           <RefreshCw className="w-4 h-4" />새로 만들기
         </Button>
         <div className="flex gap-2 flex-wrap">
-          <Button variant="outline" onClick={() => blogMutation.mutate()} disabled={blogMutation.isPending} className="gap-2">
-            {blogMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
-            블로그 생성
-          </Button>
           <Button
             variant="outline"
             className="gap-2 text-red-600 border-red-300 hover:bg-red-50 dark:hover:bg-red-950"
             onClick={() => onYouTubeUpload?.()}
           >
-            <Youtube className="w-4 h-4" />
-            YouTube 발행
+            <Youtube className="w-4 h-4" />YouTube 발행
           </Button>
           <Button onClick={onSave} disabled={isSaving || isSaved} className="gap-2">
             {isSaved ? <><Check className="w-4 h-4" />저장됨</> : isSaving ? <><Loader2 className="w-4 h-4 animate-spin" />저장 중</> : <><Save className="w-4 h-4" />저장하기</>}
@@ -449,14 +427,60 @@ function ResultsDisplay({
         {ref && <BibleVerseCard reference={ref} verse={verse} />}
       </div>
 
-      {/* 이미지 + 캡션 */}
-      <div className="grid md:grid-cols-2 gap-6">
-        {imageUrl && <ImagePreviewCard imageUrl={imageUrl} prompt={results.imagePrompt} />}
-        {caption && <InstagramCaptionCard caption={caption} hashtags={hashtags} />}
+      {/* ── 인스타그램 섹션 ── */}
+      <div className="border rounded-xl overflow-hidden">
+        <div className="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-950/30 dark:to-pink-950/30 border-b">
+          <div className="flex items-center gap-2">
+            <Instagram className="w-5 h-5 text-pink-500" />
+            <span className="font-semibold text-sm">인스타그램 콘텐츠</span>
+          </div>
+        </div>
+        <div className="p-4 grid md:grid-cols-2 gap-4">
+          {imageUrl && <ImagePreviewCard imageUrl={imageUrl} prompt={results.imagePrompt} />}
+          {caption && <InstagramCaptionCard caption={caption} hashtags={hashtags} />}
+          {!imageUrl && !caption && (
+            <p className="text-sm text-muted-foreground col-span-2 text-center py-4">인스타그램 콘텐츠가 없습니다.</p>
+          )}
+        </div>
       </div>
 
-      {/* 블로그 */}
-      {blog && <BlogResultCard blog={blog} />}
+      {/* ── 블로그 섹션 ── */}
+      <div className="border rounded-xl overflow-hidden">
+        <div className="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/30 dark:to-indigo-950/30 border-b">
+          <div className="flex items-center gap-2">
+            <FileText className="w-5 h-5 text-blue-500" />
+            <span className="font-semibold text-sm">블로그 콘텐츠</span>
+          </div>
+          {!blog && (
+            <Button
+              size="sm"
+              onClick={onBlogGenerate}
+              disabled={isBlogGenerating}
+              className="gap-1.5 bg-blue-600 hover:bg-blue-700 text-white"
+            >
+              {isBlogGenerating
+                ? <><Loader2 className="w-3.5 h-3.5 animate-spin" />생성 중...</>
+                : <><Sparkles className="w-3.5 h-3.5" />블로그 생성하기</>
+              }
+            </Button>
+          )}
+        </div>
+        <div className="p-4">
+          {isBlogGenerating && (
+            <div className="flex items-center justify-center gap-2 py-8 text-muted-foreground">
+              <Loader2 className="w-5 h-5 animate-spin" />
+              <span className="text-sm">AI가 블로그 글을 작성하고 이미지를 생성 중입니다...</span>
+            </div>
+          )}
+          {blog && <BlogResultCard blog={blog} />}
+          {!blog && !isBlogGenerating && (
+            <div className="text-center py-8">
+              <FileText className="w-10 h-10 mx-auto mb-3 text-muted-foreground/30" />
+              <p className="text-sm text-muted-foreground">블로그 콘텐츠를 생성하려면 위 버튼을 클릭하세요.</p>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }
@@ -875,6 +899,8 @@ export default function YouTubeScripture() {
   const [viewState, setViewState] = useState<ViewState>("input");
   const [loadingSteps, setLoadingSteps] = useState<LoadingStep[]>(initialSteps);
   const [results, setResults] = useState<GeneratedContent | null>(null);
+  const [blog, setBlog] = useState<BlogContent | null>(null);
+  const [pendingBlogAfterGenerate, setPendingBlogAfterGenerate] = useState(false);
   const [isSaved, setIsSaved] = useState(false);
   const [savedContentId, setSavedContentId] = useState<string | undefined>();
   const [ytUploadOpen, setYtUploadOpen] = useState(false);
@@ -932,18 +958,43 @@ export default function YouTubeScripture() {
     onMutate: () => {
       setViewState("loading");
       setIsSaved(false);
+      setBlog(null);
       animateLoadingSteps();
     },
     onSuccess: (data) => {
       setResults(data);
       setLoadingSteps(initialSteps.map(s => ({ ...s, status: "complete" })));
-      setTimeout(() => setViewState("results"), 500);
+      setTimeout(() => {
+        setViewState("results");
+        // 블로그 모드로 생성한 경우 자동으로 블로그 생성
+        if (pendingBlogAfterGenerate) {
+          setPendingBlogAfterGenerate(false);
+          const ref = data.verseReference || data.bibleReference || "";
+          const verse = data.verseContent || data.bibleVerse || "";
+          blogMutation.mutate({ summary: data.summary, coreMessage: data.coreMessage, verseReference: ref, verseContent: verse });
+        }
+      }, 500);
     },
     onError: (e: Error) => {
       setViewState("input");
       setLoadingSteps(initialSteps);
+      setPendingBlogAfterGenerate(false);
       toast({ title: "생성 실패", description: e.message, variant: "destructive" });
     },
+  });
+
+  const blogMutation = useMutation({
+    mutationFn: async (data: { summary: string[]; coreMessage: string; verseReference: string; verseContent: string }) => {
+      return apiRequest("/api/youtube-scripture/blog", {
+        method: "POST",
+        body: JSON.stringify(data),
+      }) as Promise<BlogContent>;
+    },
+    onSuccess: (data) => {
+      setBlog(data);
+      toast({ title: "블로그 생성 완료!" });
+    },
+    onError: (e: Error) => toast({ title: "블로그 생성 실패", description: e.message, variant: "destructive" }),
   });
 
   const saveMutation = useMutation({
@@ -983,14 +1034,22 @@ export default function YouTubeScripture() {
     },
   });
 
-  const handleSubmit = () => {
-    if (inputMode === "url") {
-      if (!youtubeUrl.trim()) { toast({ title: "URL을 입력해주세요", variant: "destructive" }); return; }
-      generateMutation.mutate({ youtubeUrl: youtubeUrl.trim(), verseHint: verseHint.trim() || undefined });
-    } else {
-      if (!transcriptText.trim()) { toast({ title: "자막을 입력해주세요", variant: "destructive" }); return; }
-      generateMutation.mutate({ transcriptText: transcriptText.trim(), verseHint: verseHint.trim() || undefined });
-    }
+  const handleSubmit = (mode: "instagram" | "blog" = "instagram") => {
+    setPendingBlogAfterGenerate(mode === "blog");
+    const payload = inputMode === "url"
+      ? { youtubeUrl: youtubeUrl.trim(), verseHint: verseHint.trim() || undefined }
+      : { transcriptText: transcriptText.trim(), verseHint: verseHint.trim() || undefined };
+
+    if (inputMode === "url" && !youtubeUrl.trim()) { toast({ title: "URL을 입력해주세요", variant: "destructive" }); return; }
+    if (inputMode === "transcript" && !transcriptText.trim()) { toast({ title: "자막을 입력해주세요", variant: "destructive" }); return; }
+    generateMutation.mutate(payload);
+  };
+
+  const handleBlogGenerate = () => {
+    if (!results) return;
+    const ref = results.verseReference || results.bibleReference || "";
+    const verse = results.verseContent || results.bibleVerse || "";
+    blogMutation.mutate({ summary: results.summary, coreMessage: results.coreMessage, verseReference: ref, verseContent: verse });
   };
 
   const handleLoadSaved = (item: ScriptureContent) => {
@@ -1069,7 +1128,7 @@ export default function YouTubeScripture() {
                       placeholder="https://www.youtube.com/watch?v=..."
                       value={youtubeUrl}
                       onChange={(e) => setYoutubeUrl(e.target.value)}
-                      onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
+                      onKeyDown={(e) => e.key === "Enter" && handleSubmit("instagram")}
                     />
                     <p className="text-xs text-primary">유튜브 영상 링크를 입력하면 자동으로 자막을 추출합니다</p>
                   </div>
@@ -1095,9 +1154,25 @@ export default function YouTubeScripture() {
                   <p className="text-xs text-muted-foreground">특정 주제나 성경 구절을 원하시면 힌트를 입력해주세요</p>
                 </div>
 
-                <Button onClick={handleSubmit} disabled={generateMutation.isPending} className="w-full gap-2" size="lg">
-                  <Sparkles className="w-4 h-4" />자동 생성하기
-                </Button>
+                <div className="grid grid-cols-2 gap-3">
+                  <Button
+                    onClick={() => handleSubmit("instagram")}
+                    disabled={generateMutation.isPending}
+                    className="gap-2 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white"
+                    size="lg"
+                  >
+                    <Instagram className="w-4 h-4" />인스타그램 생성하기
+                  </Button>
+                  <Button
+                    onClick={() => handleSubmit("blog")}
+                    disabled={generateMutation.isPending}
+                    variant="outline"
+                    className="gap-2 border-2 border-blue-400 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950"
+                    size="lg"
+                  >
+                    <FileText className="w-4 h-4" />블로그 생성하기
+                  </Button>
+                </div>
               </CardContent>
             </Card>
           )}
@@ -1108,12 +1183,15 @@ export default function YouTubeScripture() {
             <>
               <ResultsDisplay
                 results={results}
-                onRegenerate={() => { setViewState("input"); setResults(null); setIsSaved(false); }}
+                onRegenerate={() => { setViewState("input"); setResults(null); setIsSaved(false); setBlog(null); }}
                 onSave={() => saveMutation.mutate()}
                 isSaving={saveMutation.isPending}
                 isSaved={isSaved}
                 savedContentId={savedContentId}
                 onYouTubeUpload={() => setYtUploadOpen(true)}
+                blog={blog}
+                onBlogGenerate={handleBlogGenerate}
+                isBlogGenerating={blogMutation.isPending}
               />
               <YouTubeUploadDialog
                 open={ytUploadOpen}
