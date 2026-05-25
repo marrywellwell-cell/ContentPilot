@@ -85,6 +85,22 @@ async function generateBlogImageBase64(prompt: string): Promise<string | null> {
     }
   }
 
+  // 3차: Pollinations.ai (무료, API키 불필요)
+  try {
+    const shortPrompt = encodeURIComponent(
+      "open Bible soft golden morning light wooden table peaceful spiritual no text no people photorealistic"
+    );
+    const seed = Math.floor(Math.random() * 9999999);
+    const polRes = await fetch(
+      `https://image.pollinations.ai/prompt/${shortPrompt}?width=1024&height=1024&nologo=true&seed=${seed}`,
+      { signal: AbortSignal.timeout(45000) }
+    );
+    if (polRes.ok) {
+      const buf = Buffer.from(await polRes.arrayBuffer());
+      return `data:image/jpeg;base64,${buf.toString("base64")}`;
+    }
+  } catch (e: any) { console.warn(`[scripture-blog] Pollinations 실패:`, e.message?.slice(0, 80)); }
+
   return null;
 }
 

@@ -101,6 +101,24 @@ async function generateScriptureImageBase64(prompt: string): Promise<string | nu
     }
   }
 
+  // 3차: Pollinations.ai (무료, API키 불필요, 매번 다른 이미지)
+  try {
+    console.log("[scripture] Pollinations.ai 시도...");
+    const shortPrompt = encodeURIComponent(
+      "open Bible soft golden morning light wooden table peaceful spiritual no text no people photorealistic"
+    );
+    const seed = Math.floor(Math.random() * 9999999);
+    const polUrl = `https://image.pollinations.ai/prompt/${shortPrompt}?width=1024&height=1024&nologo=true&seed=${seed}`;
+    const polRes = await fetch(polUrl, { signal: AbortSignal.timeout(45000) });
+    if (polRes.ok) {
+      const buf = Buffer.from(await polRes.arrayBuffer());
+      console.log("[scripture] Pollinations.ai 성공");
+      return `data:image/jpeg;base64,${buf.toString("base64")}`;
+    }
+  } catch (err: any) {
+    console.warn("[scripture] Pollinations.ai 실패:", err?.message?.slice(0, 80));
+  }
+
   console.warn("[scripture] 모든 이미지 생성 실패 — Unsplash 폴백 사용");
   return null;
 }
@@ -282,10 +300,37 @@ JSON: { "caption": "캡션 전문", "hashtags": ["#해시태그1",...(8-10개)] 
       thumbnailBase64 = await createSmallThumbnail(imageBase64);
       imageUrl = ""; // base64 사용 시 imageUrl 불필요
 
-      // 슬라이드별 이미지 생성 (동일 배경 + 다른 그라디언트/텍스트)
+      // 슬라이드별 이미지 생성 (슬라이드마다 다른 Pollinations 배경)
       if (instagramSlides.length > 0) {
-        instagramSlideImages = await createInstagramSlides(rawBase64, instagramSlides, textContent.verseReference);
-        // 슬라이드 썸네일 생성 (DB 저장용, 400×400 JPEG)
+        // 슬라이드마다 다른 배경 이미지 병렬 생성 (Pollinations, seed 다르게)
+        const slideBackgrounds = await Promise.all(
+          instagramSlides.map(async (_, si) => {
+            try {
+              const prompts = [
+                "open Bible wooden table golden morning light peaceful",
+                "sunrise over calm ocean water golden hour spiritual",
+                "beautiful flowers garden soft bokeh warm light divine",
+                "mountain landscape sunrise misty peaceful nature worship",
+                "candle light prayer hands gentle warm glow spiritual",
+              ];
+              const p = encodeURIComponent(
+                `${prompts[si % prompts.length]} photorealistic no text no people`
+              );
+              const seed = Math.floor(Math.random() * 9999999);
+              const res = await fetch(
+                `https://image.pollinations.ai/prompt/${p}?width=1024&height=1024&nologo=true&seed=${seed}`,
+                { signal: AbortSignal.timeout(40000) }
+              );
+              if (res.ok) {
+                const buf = Buffer.from(await res.arrayBuffer());
+                return `data:image/jpeg;base64,${buf.toString("base64")}`;
+              }
+            } catch {}
+            return rawBase64; // 실패 시 메인 배경으로 폴백
+          })
+        );
+
+        instagramSlideImages = await createInstagramSlides(slideBackgrounds, instagramSlides, textContent.verseReference);
         instagramSlideThumbUrls = await Promise.all(
           instagramSlideImages.map(img => createSlideThumbnail(img).catch(() => ""))
         );

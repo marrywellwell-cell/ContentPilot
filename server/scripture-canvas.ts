@@ -158,16 +158,18 @@ export async function createSmallThumbnail(imageBase64: string, size = 200): Pro
 }
 
 // 인스타그램 슬라이드 이미지 생성 (슬라이드별 다른 그라디언트 + 텍스트 오버레이)
+// imageBase64: 단일 배경 or 슬라이드별 배경 배열
 export async function createInstagramSlides(
-  imageBase64: string,
+  imageBase64: string | string[],
   slides: string[],
   verseReference: string
 ): Promise<string[]> {
   if (!slides.length) return [];
+  const backgrounds = Array.isArray(imageBase64) ? imageBase64 : Array(slides.length).fill(imageBase64);
   try {
     await ensureFonts();
     const { createCanvas, loadImage } = await import("canvas");
-    const image = await loadImage(base64ToBuffer(imageBase64));
+    const image = await loadImage(base64ToBuffer(backgrounds[0]));
     const SIZE = 1080;
 
     // 슬라이드별 그라디언트 색상 (RGBA)
@@ -185,8 +187,17 @@ export async function createInstagramSlides(
       const canvas = createCanvas(SIZE, SIZE);
       const ctx = canvas.getContext("2d") as any;
 
-      // 배경 이미지
-      ctx.drawImage(image, 0, 0, SIZE, SIZE);
+      // 슬라이드별 배경 이미지 (다른 배경이 있으면 사용, 없으면 첫 번째 배경)
+      const bgBase64 = backgrounds[i] || backgrounds[0];
+      const bg = bgBase64 !== backgrounds[0]
+        ? await loadImage(base64ToBuffer(bgBase64)).catch(() => image)
+        : image;
+
+      // 배경 이미지 (정사각형 크롭)
+      const side = Math.min(bg.width, bg.height);
+      const sx = (bg.width - side) / 2;
+      const sy = (bg.height - side) / 2;
+      ctx.drawImage(bg, sx, sy, side, side, 0, 0, SIZE, SIZE);
 
       // 그라디언트 오버레이
       const overlay = overlays[i % overlays.length];
