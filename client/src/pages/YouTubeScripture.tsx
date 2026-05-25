@@ -718,8 +718,20 @@ function ContentDetailDialog({
                 </h3>
                 <div className="grid grid-cols-3 gap-2">
                   {slides.map((slide, i) => (
-                    <div key={i} className="aspect-square rounded-lg bg-gradient-to-br from-purple-600 to-blue-600 flex items-center justify-center p-2">
-                      <p className="text-white text-[10px] font-bold text-center leading-tight">{slide}</p>
+                    <div
+                      key={i}
+                      className="aspect-square rounded-lg overflow-hidden relative flex items-center justify-center p-2"
+                      style={imageUrl ? {
+                        backgroundImage: `url(${imageUrl})`,
+                        backgroundSize: "cover",
+                        backgroundPosition: "center",
+                      } : {}}
+                    >
+                      {imageUrl
+                        ? <div className="absolute inset-0 bg-black/50" />
+                        : <div className="absolute inset-0 bg-gradient-to-br from-purple-600 to-blue-600" />
+                      }
+                      <p className="relative z-10 text-white text-[10px] font-bold text-center leading-tight drop-shadow">{slide}</p>
                     </div>
                   ))}
                 </div>

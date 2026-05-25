@@ -26,10 +26,9 @@ async function generateScriptureImageBase64(prompt: string): Promise<string | nu
     " Photorealistic, high quality, no text in image."
   ).trim();
 
-  // 1차: OpenAI (gpt-image-1-mini → gpt-image-1 → dall-e-3 → dall-e-2)
+  // 1차: OpenAI (gpt-image-1 → dall-e-3 → dall-e-2) — 모두 b64_json으로 직접 수신
   if (process.env.OPENAI_API_KEY) {
     const openaiModels = [
-      "gpt-image-1-mini",
       "gpt-image-1",
       "dall-e-3",
       "dall-e-2",
@@ -39,18 +38,23 @@ async function generateScriptureImageBase64(prompt: string): Promise<string | nu
       try {
         console.log(`[scripture] OpenAI ${model} 시도...`);
         const openai = getOpenAI();
-        const params: any = { model, prompt: fullPrompt.slice(0, 1000), n: 1, size: "1024x1024" };
-        // dall-e-3/dall-e-2 URL 방식, gpt-image-1* b64_json 방식
-        if (model.startsWith("gpt-image")) params.response_format = "b64_json";
+        const params: any = {
+          model,
+          prompt: fullPrompt.slice(0, 1000),
+          n: 1,
+          size: "1024x1024",
+          response_format: "b64_json",
+        };
 
         const response = await openai.images.generate(params);
         const b64 = response.data?.[0]?.b64_json;
-        const url = response.data?.[0]?.url;
 
         if (b64) {
           console.log(`[scripture] OpenAI ${model} 성공 (base64)`);
           return `data:image/png;base64,${b64}`;
         }
+        // URL 응답 폴백 (gpt-image-1이 URL을 반환하는 경우)
+        const url = response.data?.[0]?.url;
         if (url) {
           console.log(`[scripture] OpenAI ${model} 성공 (url fetch)`);
           const imgRes = await fetch(url);
@@ -275,8 +279,8 @@ JSON: { "caption": "캡션 전문", "hashtags": ["#해시태그1",...(8-10개)] 
     } catch (err: any) {
       console.warn("[scripture-generator] canvas 처리 실패 (오버레이 없이 사용):", err.message?.slice(0, 80));
       imageBase64 = rawBase64;
-      // 썸네일은 canvas 없이 그냥 rawBase64 사용 (크기가 크더라도 표시는 됨)
-      thumbnailBase64 = undefined;
+      // canvas 실패 시 Unsplash fallback을 imageUrl로 유지 (DB 저장용)
+      // imageUrl remains UNSPLASH_FALLBACK so imageUrls in response won't be empty
     }
   }
 

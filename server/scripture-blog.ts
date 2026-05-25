@@ -37,18 +37,23 @@ async function generateBlogImageBase64(prompt: string): Promise<string | null> {
     " Photorealistic, high quality, no text in image."
   ).trim();
 
-  // 1차: OpenAI (gpt-image-1-mini → gpt-image-1 → dall-e-3 → dall-e-2)
+  // 1차: OpenAI (gpt-image-1 → dall-e-3 → dall-e-2) — 모두 b64_json으로 직접 수신
   if (process.env.OPENAI_API_KEY) {
-    const openaiModels = ["gpt-image-1-mini", "gpt-image-1", "dall-e-3", "dall-e-2"] as const;
+    const openaiModels = ["gpt-image-1", "dall-e-3", "dall-e-2"] as const;
     for (const model of openaiModels) {
       try {
         const openai = getOpenAI();
-        const params: any = { model, prompt: fullPrompt.slice(0, 1000), n: 1, size: "1024x1024" };
-        if (model.startsWith("gpt-image")) params.response_format = "b64_json";
+        const params: any = {
+          model,
+          prompt: fullPrompt.slice(0, 1000),
+          n: 1,
+          size: "1024x1024",
+          response_format: "b64_json",
+        };
         const res = await openai.images.generate(params);
         const b64 = res.data?.[0]?.b64_json;
-        const url = res.data?.[0]?.url;
         if (b64) return `data:image/png;base64,${b64}`;
+        const url = res.data?.[0]?.url;
         if (url) {
           const imgRes = await fetch(url);
           if (imgRes.ok) return `data:image/png;base64,${Buffer.from(await imgRes.arrayBuffer()).toString("base64")}`;
