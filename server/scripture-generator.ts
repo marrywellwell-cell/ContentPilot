@@ -123,6 +123,46 @@ async function generateScriptureImageBase64(prompt: string): Promise<string | nu
   return null;
 }
 
+// ─── 슬라이드 텍스트 → 이미지 프롬프트 변환 ─────────────────────────────────
+
+function slideTextToImagePrompt(slideText: string, slideIndex: number): string {
+  const text = slideText.toLowerCase();
+
+  // 키워드 매핑: 한국어 키워드 → 영어 이미지 프롬프트
+  const keywordMap: [string[], string][] = [
+    [["사랑", "love", "애정", "섬기"], "beautiful red roses blooming garden warm sunlight love"],
+    [["기도", "pray", "기원", "간구"], "hands folded in prayer warm candlelight soft glow peaceful"],
+    [["믿음", "faith", "신뢰", "확신"], "bright sunlight breaking through dark clouds mountain peak hope"],
+    [["평화", "peace", "평안", "안식", "쉼"], "calm serene lake reflection gentle mist sunrise peaceful"],
+    [["은혜", "grace", "축복", "감사", "blessing"], "golden light rays through forest trees divine blessing"],
+    [["말씀", "word", "성경", "scripture"], "open Bible golden light wooden table morning devotion"],
+    [["하나님", "god", "주님", "lord", "예수", "jesus"], "bright golden light heaven rays clouds divine presence"],
+    [["찬양", "praise", "worship", "경배"], "beautiful sunrise over ocean horizon worship celebration"],
+    [["겸손", "humble", "낮아짐"], "small delicate flower morning dew humble grace nature"],
+    [["소망", "hope", "기대", "미래"], "sunrise over mountain horizon new day hope bright"],
+    [["공동체", "community", "함께", "교회"], "warm gathering space cozy light community togetherness"],
+    [["치유", "heal", "회복", "restoration"], "fresh spring water flowing rocks sunlight healing nature"],
+    [["순종", "obey", "따름", "헌신"], "peaceful shepherd countryside rolling hills green obedience"],
+    [["영적", "spirit", "성령"], "light beams through stained glass church spiritual divine"],
+  ];
+
+  for (const [keywords, prompt] of keywordMap) {
+    if (keywords.some(k => text.includes(k))) {
+      return `${prompt} photorealistic bright vibrant beautiful no text no people high quality`;
+    }
+  }
+
+  // 기본 프롬프트 (슬라이드 인덱스별 다양화)
+  const defaults = [
+    "open Bible soft golden morning light wooden table peaceful bright",
+    "sunrise over calm ocean water golden hour vibrant spiritual",
+    "beautiful blooming flowers garden soft bokeh warm light bright",
+    "mountain valley sunrise misty morning peaceful nature bright",
+    "glowing candle warm light cozy spiritual peaceful soft",
+  ];
+  return `${defaults[slideIndex % defaults.length]} photorealistic no text no people high quality`;
+}
+
 // ─── AI 콘텐츠 생성 ──────────────────────────────────────────────────────────
 
 export interface ScriptureGeneratedContent {
@@ -300,33 +340,25 @@ JSON: { "caption": "캡션 전문", "hashtags": ["#해시태그1",...(8-10개)] 
       thumbnailBase64 = await createSmallThumbnail(imageBase64);
       imageUrl = ""; // base64 사용 시 imageUrl 불필요
 
-      // 슬라이드별 이미지 생성 (슬라이드마다 다른 Pollinations 배경)
+      // 슬라이드별 이미지 생성 (슬라이드 텍스트 내용에 맞는 이미지)
       if (instagramSlides.length > 0) {
-        // 슬라이드마다 다른 배경 이미지 병렬 생성 (Pollinations, seed 다르게)
         const slideBackgrounds = await Promise.all(
-          instagramSlides.map(async (_, si) => {
+          instagramSlides.map(async (slideText, si) => {
             try {
-              const prompts = [
-                "open Bible wooden table golden morning light peaceful",
-                "sunrise over calm ocean water golden hour spiritual",
-                "beautiful flowers garden soft bokeh warm light divine",
-                "mountain landscape sunrise misty peaceful nature worship",
-                "candle light prayer hands gentle warm glow spiritual",
-              ];
-              const p = encodeURIComponent(
-                `${prompts[si % prompts.length]} photorealistic no text no people`
-              );
+              // 슬라이드 텍스트 키워드로 이미지 주제 결정
+              const prompt = slideTextToImagePrompt(slideText, si);
+              const encoded = encodeURIComponent(prompt);
               const seed = Math.floor(Math.random() * 9999999);
               const res = await fetch(
-                `https://image.pollinations.ai/prompt/${p}?width=1024&height=1024&nologo=true&seed=${seed}`,
-                { signal: AbortSignal.timeout(40000) }
+                `https://image.pollinations.ai/prompt/${encoded}?width=1024&height=1024&nologo=true&seed=${seed}&enhance=true`,
+                { signal: AbortSignal.timeout(45000) }
               );
               if (res.ok) {
                 const buf = Buffer.from(await res.arrayBuffer());
                 return `data:image/jpeg;base64,${buf.toString("base64")}`;
               }
             } catch {}
-            return rawBase64; // 실패 시 메인 배경으로 폴백
+            return rawBase64;
           })
         );
 

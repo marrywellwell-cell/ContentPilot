@@ -157,7 +157,7 @@ export async function createSmallThumbnail(imageBase64: string, size = 200): Pro
   }
 }
 
-// 인스타그램 슬라이드 이미지 생성 (슬라이드별 다른 그라디언트 + 텍스트 오버레이)
+// 인스타그램 슬라이드 이미지 생성 — 밝은 배경 + 하단 패널 텍스트
 // imageBase64: 단일 배경 or 슬라이드별 배경 배열
 export async function createInstagramSlides(
   imageBase64: string | string[],
@@ -169,16 +169,16 @@ export async function createInstagramSlides(
   try {
     await ensureFonts();
     const { createCanvas, loadImage } = await import("canvas");
-    const image = await loadImage(base64ToBuffer(backgrounds[0]));
+    const firstBg = await loadImage(base64ToBuffer(backgrounds[0]));
     const SIZE = 1080;
 
-    // 슬라이드별 그라디언트 색상 (RGBA)
-    const overlays = [
-      { top: "rgba(88,28,135,0.72)", bottom: "rgba(49,46,129,0.85)" },   // purple-indigo
-      { top: "rgba(30,27,75,0.70)", bottom: "rgba(67,20,129,0.82)" },    // deep indigo
-      { top: "rgba(14,30,97,0.72)", bottom: "rgba(12,74,110,0.85)" },    // blue-navy
-      { top: "rgba(6,78,59,0.72)", bottom: "rgba(20,83,45,0.85)" },      // teal-green
-      { top: "rgba(120,53,15,0.72)", bottom: "rgba(154,52,18,0.85)" },   // amber-orange
+    // 슬라이드별 포인트 색상 (하단 패널 액센트)
+    const accentColors = [
+      "rgba(109,40,217,0.88)",   // violet
+      "rgba(37,99,235,0.88)",    // blue
+      "rgba(5,150,105,0.88)",    // emerald
+      "rgba(217,119,6,0.88)",    // amber
+      "rgba(220,38,38,0.88)",    // red
     ];
 
     const results: string[] = [];
@@ -187,69 +187,84 @@ export async function createInstagramSlides(
       const canvas = createCanvas(SIZE, SIZE);
       const ctx = canvas.getContext("2d") as any;
 
-      // 슬라이드별 배경 이미지 (다른 배경이 있으면 사용, 없으면 첫 번째 배경)
+      // 슬라이드별 배경 이미지 로드 (다른 배경 있으면 사용)
       const bgBase64 = backgrounds[i] || backgrounds[0];
-      const bg = bgBase64 !== backgrounds[0]
-        ? await loadImage(base64ToBuffer(bgBase64)).catch(() => image)
-        : image;
+      const bg = (bgBase64 && bgBase64 !== backgrounds[0])
+        ? await loadImage(base64ToBuffer(bgBase64)).catch(() => firstBg)
+        : firstBg;
 
-      // 배경 이미지 (정사각형 크롭)
+      // 배경 이미지 — 정사각형 크롭 후 전체 채움
       const side = Math.min(bg.width, bg.height);
       const sx = (bg.width - side) / 2;
       const sy = (bg.height - side) / 2;
       ctx.drawImage(bg, sx, sy, side, side, 0, 0, SIZE, SIZE);
 
-      // 그라디언트 오버레이
-      const overlay = overlays[i % overlays.length];
-      const grad = ctx.createLinearGradient(0, 0, 0, SIZE);
-      grad.addColorStop(0, overlay.top);
-      grad.addColorStop(1, overlay.bottom);
-      ctx.fillStyle = grad;
+      // 하단 그라디언트 오버레이만 (이미지 상단은 밝게 유지)
+      const fadeGrad = ctx.createLinearGradient(0, SIZE * 0.42, 0, SIZE);
+      fadeGrad.addColorStop(0, "rgba(0,0,0,0)");
+      fadeGrad.addColorStop(0.35, "rgba(0,0,0,0.55)");
+      fadeGrad.addColorStop(1, "rgba(0,0,0,0.82)");
+      ctx.fillStyle = fadeGrad;
       ctx.fillRect(0, 0, SIZE, SIZE);
 
-      // 슬라이드 번호 (상단 우측)
-      ctx.textAlign = "right";
-      ctx.textBaseline = "top";
-      ctx.font = `bold 28px "NotoSansKR"`;
-      ctx.fillStyle = "rgba(255,255,255,0.7)";
-      ctx.fillText(`${i + 1} / ${slides.length}`, SIZE - 40, 40);
-
-      // 장식선 (상단, 하단)
-      ctx.strokeStyle = "rgba(255,255,255,0.3)";
-      ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.moveTo(60, 110); ctx.lineTo(SIZE - 60, 110); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(60, SIZE - 110); ctx.lineTo(SIZE - 60, SIZE - 110); ctx.stroke();
-
-      // 메인 슬라이드 텍스트 (중앙)
-      const maxWidth = SIZE - 120;
-      ctx.font = `bold 68px "NotoSansKR"`;
+      // 슬라이드 번호 태그 (상단 좌측)
+      const accent = accentColors[i % accentColors.length];
+      const tagW = 100, tagH = 44, tagX = 40, tagY = 40, tagR = 22;
+      ctx.fillStyle = accent;
+      ctx.beginPath();
+      ctx.moveTo(tagX + tagR, tagY);
+      ctx.lineTo(tagX + tagW - tagR, tagY);
+      ctx.quadraticCurveTo(tagX + tagW, tagY, tagX + tagW, tagY + tagR);
+      ctx.lineTo(tagX + tagW, tagY + tagH - tagR);
+      ctx.quadraticCurveTo(tagX + tagW, tagY + tagH, tagX + tagW - tagR, tagY + tagH);
+      ctx.lineTo(tagX + tagR, tagY + tagH);
+      ctx.quadraticCurveTo(tagX, tagY + tagH, tagX, tagY + tagH - tagR);
+      ctx.lineTo(tagX, tagY + tagR);
+      ctx.quadraticCurveTo(tagX, tagY, tagX + tagR, tagY);
+      ctx.closePath();
+      ctx.fill();
+      ctx.font = `bold 22px "NotoSansKR"`;
       ctx.fillStyle = "#ffffff";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.shadowColor = "rgba(0,0,0,0.9)";
-      ctx.shadowBlur = 12;
-      ctx.shadowOffsetX = 3;
+      ctx.fillText(`${i + 1} / ${slides.length}`, tagX + tagW / 2, tagY + tagH / 2);
+
+      // 메인 슬라이드 텍스트 (하단 영역)
+      const textAreaTop = SIZE * 0.52;
+      const maxWidth = SIZE - 100;
+      ctx.font = `bold 72px "NotoSansKR"`;
+      ctx.fillStyle = "#ffffff";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "top";
+      ctx.shadowColor = "rgba(0,0,0,0.95)";
+      ctx.shadowBlur = 16;
+      ctx.shadowOffsetX = 2;
       ctx.shadowOffsetY = 3;
 
-      const lines = wrapText(ctx, slides[i], maxWidth, 6);
-      const lineHeight = 84;
-      const totalH = lines.length * lineHeight;
-      const startY = SIZE / 2 - totalH / 2 + lineHeight / 2;
+      const lines = wrapText(ctx, slides[i], maxWidth, 5);
+      const lineHeight = 90;
       lines.forEach((line, j) => {
-        ctx.fillText(line, SIZE / 2, startY + j * lineHeight);
+        ctx.fillText(line, SIZE / 2, textAreaTop + j * lineHeight);
       });
 
-      // 말씀 구절 (하단)
-      ctx.shadowBlur = 6;
-      ctx.font = `32px "NotoSansKR"`;
-      ctx.fillStyle = "rgba(255,255,255,0.85)";
+      // 액센트 구분선
+      ctx.shadowColor = "transparent"; ctx.shadowBlur = 0;
+      ctx.strokeStyle = accent;
+      ctx.lineWidth = 4;
+      const lineY = textAreaTop + lines.length * lineHeight + 20;
+      ctx.beginPath();
+      ctx.moveTo(SIZE / 2 - 80, lineY);
+      ctx.lineTo(SIZE / 2 + 80, lineY);
+      ctx.stroke();
+
+      // 말씀 구절 (최하단)
+      ctx.font = `28px "NotoSansKR"`;
+      ctx.fillStyle = "rgba(255,255,255,0.80)";
       ctx.textAlign = "center";
       ctx.textBaseline = "bottom";
-      ctx.fillText(`— ${verseReference} —`, SIZE / 2, SIZE - 60);
+      ctx.fillText(`— ${verseReference} —`, SIZE / 2, SIZE - 45);
 
-      ctx.shadowColor = "transparent"; ctx.shadowBlur = 0;
-
-      results.push(`data:image/png;base64,${canvas.toBuffer("image/png").toString("base64")}`);
+      results.push(`data:image/jpeg;base64,${canvas.toBuffer("image/jpeg", { quality: 0.92 }).toString("base64")}`);
     }
 
     return results;
