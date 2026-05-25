@@ -105,7 +105,7 @@ async function generateScriptureImageBase64(prompt: string): Promise<string | nu
   try {
     console.log("[scripture] Pollinations.ai 시도...");
     const shortPrompt = encodeURIComponent(
-      "open Bible soft golden morning light wooden table peaceful spiritual no text no people photorealistic"
+      "open Bible bright white linen table natural daylight pastel flowers spring morning airy light no text no people photorealistic high key"
     );
     const seed = Math.floor(Math.random() * 9999999);
     const polUrl = `https://image.pollinations.ai/prompt/${shortPrompt}?width=1024&height=1024&nologo=true&seed=${seed}`;
@@ -322,7 +322,7 @@ JSON: { "caption": "캡션 전문", "hashtags": ["#해시태그1",...(8-10개)] 
   } catch {}
 
   // ── Step 4: 이미지 생성 + Canvas 오버레이 (메모리 전용) ─────────────────
-  const imagePrompt = `Christian devotional background. Peaceful spiritual atmosphere, soft golden morning light, open Bible on wooden table or serene nature landscape with warm light. Square format. Calming colors, high quality, minimalist.`;
+  const imagePrompt = `Christian devotional background. Bright airy atmosphere, soft pastel tones, high-key lighting, open Bible on white linen table in natural daylight, or serene spring nature with blooming flowers and gentle morning light. Square format. Very bright, light, pastel colors, clean aesthetic, high quality, minimalist, no dark shadows.`;
 
   const UNSPLASH_FALLBACK = "https://images.unsplash.com/photo-1499652848871-1527a310b13a?w=1080&h=1080&fit=crop";
   let imageUrl = UNSPLASH_FALLBACK;
@@ -382,7 +382,7 @@ export async function generateVerseImage(
   verseContent: string
 ): Promise<{ imageBase64?: string; thumbnailBase64?: string; imageUrl: string }> {
   const UNSPLASH_FALLBACK = "https://images.unsplash.com/photo-1499652848871-1527a310b13a?w=1080&h=1080&fit=crop";
-  const imagePrompt = `Christian devotional background. Peaceful spiritual atmosphere, soft golden morning light, open Bible on wooden table or serene nature landscape with warm light. Square format. Calming colors, high quality, minimalist.`;
+  const imagePrompt = `Christian devotional background. Bright airy atmosphere, soft pastel tones, high-key lighting, open Bible on white linen table in natural daylight, or serene spring nature with blooming flowers and gentle morning light. Square format. Very bright, light, pastel colors, clean aesthetic, high quality, minimalist, no dark shadows.`;
 
   let imageUrl = UNSPLASH_FALLBACK;
   let imageBase64: string | undefined;

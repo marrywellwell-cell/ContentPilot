@@ -103,12 +103,12 @@ export async function addVerseOverlayToBase64(
     const canvas = createCanvas(W, H);
     const ctx = canvas.getContext("2d") as any;
 
-    // 원본 이미지
-    ctx.drawImage(image, 0, 0);
-
-    // 이미지 전체에 흰색 오버레이로 밝게
-    ctx.fillStyle = "rgba(255,255,255,0.35)";
+    // 흰 배경 위에 이미지 55% 투명도로 → 어두운 사진도 밝고 파스텔하게
+    ctx.fillStyle = "#FFFFFF";
     ctx.fillRect(0, 0, W, H);
+    ctx.globalAlpha = 0.55;
+    ctx.drawImage(image, 0, 0, W, H);
+    ctx.globalAlpha = 1.0;
 
     // 중앙 frosted-glass 패널
     const padX = W * 0.06;
