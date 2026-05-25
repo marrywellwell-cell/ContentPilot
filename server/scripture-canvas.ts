@@ -157,6 +157,102 @@ export async function createSmallThumbnail(imageBase64: string, size = 200): Pro
   }
 }
 
+// 인스타그램 슬라이드 이미지 생성 (슬라이드별 다른 그라디언트 + 텍스트 오버레이)
+export async function createInstagramSlides(
+  imageBase64: string,
+  slides: string[],
+  verseReference: string
+): Promise<string[]> {
+  if (!slides.length) return [];
+  try {
+    await ensureFonts();
+    const { createCanvas, loadImage } = await import("canvas");
+    const image = await loadImage(base64ToBuffer(imageBase64));
+    const SIZE = 1080;
+
+    // 슬라이드별 그라디언트 색상 (RGBA)
+    const overlays = [
+      { top: "rgba(88,28,135,0.72)", bottom: "rgba(49,46,129,0.85)" },   // purple-indigo
+      { top: "rgba(30,27,75,0.70)", bottom: "rgba(67,20,129,0.82)" },    // deep indigo
+      { top: "rgba(14,30,97,0.72)", bottom: "rgba(12,74,110,0.85)" },    // blue-navy
+      { top: "rgba(6,78,59,0.72)", bottom: "rgba(20,83,45,0.85)" },      // teal-green
+      { top: "rgba(120,53,15,0.72)", bottom: "rgba(154,52,18,0.85)" },   // amber-orange
+    ];
+
+    const results: string[] = [];
+
+    for (let i = 0; i < slides.length; i++) {
+      const canvas = createCanvas(SIZE, SIZE);
+      const ctx = canvas.getContext("2d") as any;
+
+      // 배경 이미지
+      ctx.drawImage(image, 0, 0, SIZE, SIZE);
+
+      // 그라디언트 오버레이
+      const overlay = overlays[i % overlays.length];
+      const grad = ctx.createLinearGradient(0, 0, 0, SIZE);
+      grad.addColorStop(0, overlay.top);
+      grad.addColorStop(1, overlay.bottom);
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, SIZE, SIZE);
+
+      // 슬라이드 번호 (상단 우측)
+      ctx.textAlign = "right";
+      ctx.textBaseline = "top";
+      ctx.font = `bold 28px "NotoSansKR"`;
+      ctx.fillStyle = "rgba(255,255,255,0.7)";
+      ctx.fillText(`${i + 1} / ${slides.length}`, SIZE - 40, 40);
+
+      // 장식선 (상단, 하단)
+      ctx.strokeStyle = "rgba(255,255,255,0.3)";
+      ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(60, 110); ctx.lineTo(SIZE - 60, 110); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(60, SIZE - 110); ctx.lineTo(SIZE - 60, SIZE - 110); ctx.stroke();
+
+      // 메인 슬라이드 텍스트 (중앙)
+      const maxWidth = SIZE - 120;
+      ctx.font = `bold 68px "NotoSansKR"`;
+      ctx.fillStyle = "#ffffff";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.shadowColor = "rgba(0,0,0,0.9)";
+      ctx.shadowBlur = 12;
+      ctx.shadowOffsetX = 3;
+      ctx.shadowOffsetY = 3;
+
+      const lines = wrapText(ctx, slides[i], maxWidth, 6);
+      const lineHeight = 84;
+      const totalH = lines.length * lineHeight;
+      const startY = SIZE / 2 - totalH / 2 + lineHeight / 2;
+      lines.forEach((line, j) => {
+        ctx.fillText(line, SIZE / 2, startY + j * lineHeight);
+      });
+
+      // 말씀 구절 (하단)
+      ctx.shadowBlur = 6;
+      ctx.font = `32px "NotoSansKR"`;
+      ctx.fillStyle = "rgba(255,255,255,0.85)";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "bottom";
+      ctx.fillText(`— ${verseReference} —`, SIZE / 2, SIZE - 60);
+
+      ctx.shadowColor = "transparent"; ctx.shadowBlur = 0;
+
+      results.push(`data:image/png;base64,${canvas.toBuffer("image/png").toString("base64")}`);
+    }
+
+    return results;
+  } catch (err) {
+    console.error("[scripture-canvas] slide 생성 실패:", err);
+    return [];
+  }
+}
+
+// 슬라이드용 썸네일 (400×400 JPEG ~20KB) — DB 저장용
+export async function createSlideThumbnail(imageBase64: string): Promise<string> {
+  return createSmallThumbnail(imageBase64, 400);
+}
+
 // 파일 기반 오버레이 (하위 호환 — 기존 scripture-blog.ts에서 호출)
 export async function addVerseOverlayPublic(
   imagePath: string,

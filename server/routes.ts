@@ -1278,12 +1278,13 @@ Solution: ${brandAnalysis.solution || "없음"}`;
         instagramSlides: content.instagramSlides,
         instagramCaption: content.caption,
         instagramHashtags: content.hashtags,
-        // thumbnailBase64는 200×200 JPEG (~8KB) → DB 저장 가능
-        // imageBase64는 풀사이즈 → 프론트에서 즉시 표시용
-        imageUrls: content.thumbnailBase64
-          ? [content.thumbnailBase64]
-          : (content.imageUrl ? [content.imageUrl] : []),
+        // imageUrls[0] = 메인 썸네일, imageUrls[1..] = 슬라이드 썸네일 (DB 저장)
+        imageUrls: [
+          ...(content.thumbnailBase64 ? [content.thumbnailBase64] : (content.imageUrl ? [content.imageUrl] : [])),
+          ...((content as any).instagramSlideThumbUrls || []),
+        ],
         imageBase64: content.imageBase64 || null,
+        instagramSlideImages: (content as any).instagramSlideImages || [],
         imageUrl: content.imageUrl,
         caption: content.caption,
         hashtags: content.hashtags,

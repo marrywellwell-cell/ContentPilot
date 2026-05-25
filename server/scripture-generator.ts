@@ -118,6 +118,8 @@ export interface ScriptureGeneratedContent {
   caption: string;
   hashtags: string[];
   instagramSlides: string[];
+  instagramSlideImages: string[];      // 슬라이드별 풀사이즈 이미지 (표시용)
+  instagramSlideThumbUrls: string[];   // 슬라이드별 썸네일 (DB 저장용)
   videoTitle: string;
   videoSummary: string;
 }
@@ -269,18 +271,29 @@ JSON: { "caption": "캡션 전문", "hashtags": ["#해시태그1",...(8-10개)] 
   let imageBase64: string | undefined;
   let thumbnailBase64: string | undefined;
 
+  let instagramSlideImages: string[] = [];
+  let instagramSlideThumbUrls: string[] = [];
+
   const rawBase64 = await generateScriptureImageBase64(imagePrompt);
   if (rawBase64) {
     try {
-      const { addVerseOverlayToBase64, createSmallThumbnail } = await import("./scripture-canvas");
+      const { addVerseOverlayToBase64, createSmallThumbnail, createInstagramSlides, createSlideThumbnail } = await import("./scripture-canvas");
       imageBase64 = await addVerseOverlayToBase64(rawBase64, textContent.verseReference, textContent.verseContent);
       thumbnailBase64 = await createSmallThumbnail(imageBase64);
       imageUrl = ""; // base64 사용 시 imageUrl 불필요
+
+      // 슬라이드별 이미지 생성 (동일 배경 + 다른 그라디언트/텍스트)
+      if (instagramSlides.length > 0) {
+        instagramSlideImages = await createInstagramSlides(rawBase64, instagramSlides, textContent.verseReference);
+        // 슬라이드 썸네일 생성 (DB 저장용, 400×400 JPEG)
+        instagramSlideThumbUrls = await Promise.all(
+          instagramSlideImages.map(img => createSlideThumbnail(img).catch(() => ""))
+        );
+        instagramSlideThumbUrls = instagramSlideThumbUrls.filter(Boolean);
+      }
     } catch (err: any) {
-      console.warn("[scripture-generator] canvas 처리 실패 (오버레이 없이 사용):", err.message?.slice(0, 80));
+      console.warn("[scripture-generator] canvas 처리 실패:", err.message?.slice(0, 80));
       imageBase64 = rawBase64;
-      // canvas 실패 시 Unsplash fallback을 imageUrl로 유지 (DB 저장용)
-      // imageUrl remains UNSPLASH_FALLBACK so imageUrls in response won't be empty
     }
   }
 
@@ -298,6 +311,8 @@ JSON: { "caption": "캡션 전문", "hashtags": ["#해시태그1",...(8-10개)] 
     caption: fullCaption,
     hashtags,
     instagramSlides,
+    instagramSlideImages,
+    instagramSlideThumbUrls,
     videoTitle: textContent.coreMessage.slice(0, 50) || "말씀 콘텐츠",
     videoSummary: textContent.summary.join(" "),
   };

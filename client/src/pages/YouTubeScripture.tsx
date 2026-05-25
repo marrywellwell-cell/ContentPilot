@@ -40,6 +40,7 @@ interface GeneratedContent {
   verseContent: string;
   verseReference: string;
   instagramSlides: string[];
+  instagramSlideImages?: string[];
   instagramCaption: string;
   instagramHashtags: string[];
   imageUrls: string[];
@@ -435,11 +436,30 @@ function ResultsDisplay({
             <span className="font-semibold text-sm">인스타그램 콘텐츠</span>
           </div>
         </div>
-        <div className="p-4 grid md:grid-cols-2 gap-4">
-          {imageUrl && <ImagePreviewCard imageUrl={imageUrl} prompt={results.imagePrompt} />}
-          {caption && <InstagramCaptionCard caption={caption} hashtags={hashtags} />}
-          {!imageUrl && !caption && (
-            <p className="text-sm text-muted-foreground col-span-2 text-center py-4">인스타그램 콘텐츠가 없습니다.</p>
+        <div className="p-4 space-y-4">
+          {/* 슬라이드 이미지 */}
+          {results.instagramSlideImages && results.instagramSlideImages.length > 0 ? (
+            <div>
+              <p className="text-xs font-medium text-muted-foreground mb-2">슬라이드 ({results.instagramSlideImages.length}장)</p>
+              <div className="grid grid-cols-3 md:grid-cols-5 gap-2">
+                {results.instagramSlideImages.map((img, i) => (
+                  <div key={i} className="aspect-square rounded-lg overflow-hidden shadow-sm cursor-pointer"
+                    onClick={() => { const a = document.createElement("a"); a.href = img; a.download = `slide-${i + 1}.png`; a.click(); }}>
+                    <img src={img} alt={`슬라이드 ${i + 1}`} className="w-full h-full object-cover hover:opacity-90 transition-opacity" />
+                  </div>
+                ))}
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">슬라이드를 클릭하면 다운로드됩니다</p>
+            </div>
+          ) : imageUrl ? (
+            <ImagePreviewCard imageUrl={imageUrl} prompt={results.imagePrompt} />
+          ) : null}
+          {/* 캡션 */}
+          <div className="grid md:grid-cols-2 gap-4">
+            {caption && <InstagramCaptionCard caption={caption} hashtags={hashtags} />}
+          </div>
+          {!imageUrl && !results.instagramSlideImages?.length && !caption && (
+            <p className="text-sm text-muted-foreground text-center py-4">인스타그램 콘텐츠가 없습니다.</p>
           )}
         </div>
       </div>
@@ -785,32 +805,42 @@ function ContentDetailDialog({
             )}
 
             {/* 슬라이드 */}
-            {slides.length > 0 && (
-              <div className="space-y-2">
-                <h3 className="text-sm font-semibold flex items-center gap-1.5">
-                  <Instagram className="w-4 h-4 text-pink-500" />슬라이드 ({slides.length}장)
-                </h3>
-                <div className="grid grid-cols-3 gap-2">
-                  {slides.map((slide, i) => (
-                    <div
-                      key={i}
-                      className="aspect-square rounded-lg overflow-hidden relative flex items-center justify-center p-2"
-                      style={imageUrl ? {
-                        backgroundImage: `url(${imageUrl})`,
-                        backgroundSize: "cover",
-                        backgroundPosition: "center",
-                      } : {}}
-                    >
-                      {imageUrl
-                        ? <div className="absolute inset-0 bg-black/50" />
-                        : <div className="absolute inset-0 bg-gradient-to-br from-purple-600 to-blue-600" />
-                      }
-                      <p className="relative z-10 text-white text-[10px] font-bold text-center leading-tight drop-shadow">{slide}</p>
-                    </div>
-                  ))}
+            {slides.length > 0 && (() => {
+              // imageUrls[1..] = 슬라이드 썸네일 (신규 저장), 없으면 메인 이미지로 폴백
+              const slideImages = (item.imageUrls || []).slice(1);
+              const hasSlideImages = slideImages.length > 0;
+              return (
+                <div className="space-y-2">
+                  <h3 className="text-sm font-semibold flex items-center gap-1.5">
+                    <Instagram className="w-4 h-4 text-pink-500" />슬라이드 ({slides.length}장)
+                  </h3>
+                  <div className="grid grid-cols-3 gap-2">
+                    {slides.map((slide, i) => {
+                      const slideImg = hasSlideImages ? slideImages[i] : imageUrl;
+                      return (
+                        <div
+                          key={i}
+                          className="aspect-square rounded-lg overflow-hidden relative flex items-center justify-center p-2 cursor-pointer"
+                          style={slideImg ? {
+                            backgroundImage: `url(${slideImg})`,
+                            backgroundSize: "cover",
+                            backgroundPosition: "center",
+                          } : {}}
+                          onClick={() => { if (slideImg) { const a = document.createElement("a"); a.href = slideImg; a.download = `slide-${i + 1}.jpg`; a.click(); } }}
+                        >
+                          {slideImg
+                            ? <div className="absolute inset-0 bg-black/50" />
+                            : <div className="absolute inset-0 bg-gradient-to-br from-purple-600 to-blue-600" />
+                          }
+                          <p className="relative z-10 text-white text-[10px] font-bold text-center leading-tight drop-shadow">{slide}</p>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {hasSlideImages && <p className="text-xs text-muted-foreground">슬라이드를 클릭하면 다운로드됩니다</p>}
                 </div>
-              </div>
-            )}
+              );
+            })()}
 
             {/* 캡션 */}
             {caption && (
