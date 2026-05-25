@@ -157,114 +157,153 @@ export async function createSmallThumbnail(imageBase64: string, size = 200): Pro
   }
 }
 
-// 인스타그램 슬라이드 이미지 생성 — 밝은 배경 + 하단 패널 텍스트
-// imageBase64: 단일 배경 or 슬라이드별 배경 배열
+// 인스타그램 슬라이드 이미지 생성
+// 배경 이미지 위에 슬라이드별 색상 테마 오버레이 + 텍스트
 export async function createInstagramSlides(
   imageBase64: string | string[],
   slides: string[],
   verseReference: string
 ): Promise<string[]> {
   if (!slides.length) return [];
+
+  // 슬라이드별 색상 테마 (배경 이미지가 같아도 시각적으로 다르게)
+  const themes = [
+    { r: 109, g: 40,  b: 217, name: "violet"  },  // 보라
+    { r: 14,  g: 116, b: 144, name: "cyan"    },  // 청록
+    { r: 5,   g: 120, b: 85,  name: "emerald" },  // 초록
+    { r: 180, g: 83,  b: 9,   name: "amber"   },  // 황금
+    { r: 157, g: 23,  b: 77,  name: "rose"    },  // 장미
+  ];
+
   const backgrounds = Array.isArray(imageBase64) ? imageBase64 : Array(slides.length).fill(imageBase64);
+
   try {
     await ensureFonts();
     const { createCanvas, loadImage } = await import("canvas");
-    const firstBg = await loadImage(base64ToBuffer(backgrounds[0]));
     const SIZE = 1080;
 
-    // 슬라이드별 포인트 색상 (하단 패널 액센트)
-    const accentColors = [
-      "rgba(109,40,217,0.88)",   // violet
-      "rgba(37,99,235,0.88)",    // blue
-      "rgba(5,150,105,0.88)",    // emerald
-      "rgba(217,119,6,0.88)",    // amber
-      "rgba(220,38,38,0.88)",    // red
-    ];
+    // 첫 번째 배경 이미지 로드 (기본값)
+    const firstBg = await loadImage(base64ToBuffer(backgrounds[0]));
 
     const results: string[] = [];
 
     for (let i = 0; i < slides.length; i++) {
+      const theme = themes[i % themes.length];
+      const { r, g, b } = theme;
+
       const canvas = createCanvas(SIZE, SIZE);
       const ctx = canvas.getContext("2d") as any;
 
-      // 슬라이드별 배경 이미지 로드 (다른 배경 있으면 사용)
-      const bgBase64 = backgrounds[i] || backgrounds[0];
-      const bg = (bgBase64 && bgBase64 !== backgrounds[0])
-        ? await loadImage(base64ToBuffer(bgBase64)).catch(() => firstBg)
-        : firstBg;
+      // 배경 이미지 로드 (슬라이드별로 다른 이미지가 있으면 사용)
+      let bg = firstBg;
+      const bgSrc = backgrounds[i];
+      if (bgSrc && bgSrc !== backgrounds[0]) {
+        try { bg = await loadImage(base64ToBuffer(bgSrc)); } catch {}
+      }
 
-      // 배경 이미지 — 정사각형 크롭 후 전체 채움
+      // 배경 이미지 — 정사각형 크롭 + 전체 채움
       const side = Math.min(bg.width, bg.height);
       const sx = (bg.width - side) / 2;
       const sy = (bg.height - side) / 2;
       ctx.drawImage(bg, sx, sy, side, side, 0, 0, SIZE, SIZE);
 
-      // 하단 그라디언트 오버레이만 (이미지 상단은 밝게 유지)
-      const fadeGrad = ctx.createLinearGradient(0, SIZE * 0.42, 0, SIZE);
-      fadeGrad.addColorStop(0, "rgba(0,0,0,0)");
-      fadeGrad.addColorStop(0.35, "rgba(0,0,0,0.55)");
-      fadeGrad.addColorStop(1, "rgba(0,0,0,0.82)");
-      ctx.fillStyle = fadeGrad;
+      // 슬라이드 색상 오버레이 (45% 불투명도 — 이미지가 보이면서도 색상 차별화)
+      const colorGrad = ctx.createLinearGradient(0, 0, SIZE, SIZE);
+      colorGrad.addColorStop(0, `rgba(${r},${g},${b},0.50)`);
+      colorGrad.addColorStop(1, `rgba(${Math.max(0,r-40)},${Math.max(0,g-40)},${Math.max(0,b-40)},0.65)`);
+      ctx.fillStyle = colorGrad;
       ctx.fillRect(0, 0, SIZE, SIZE);
 
-      // 슬라이드 번호 태그 (상단 좌측)
-      const accent = accentColors[i % accentColors.length];
-      const tagW = 100, tagH = 44, tagX = 40, tagY = 40, tagR = 22;
-      ctx.fillStyle = accent;
+      // 장식 원 (우측 상단, 반투명)
       ctx.beginPath();
-      ctx.moveTo(tagX + tagR, tagY);
-      ctx.lineTo(tagX + tagW - tagR, tagY);
-      ctx.quadraticCurveTo(tagX + tagW, tagY, tagX + tagW, tagY + tagR);
-      ctx.lineTo(tagX + tagW, tagY + tagH - tagR);
-      ctx.quadraticCurveTo(tagX + tagW, tagY + tagH, tagX + tagW - tagR, tagY + tagH);
-      ctx.lineTo(tagX + tagR, tagY + tagH);
-      ctx.quadraticCurveTo(tagX, tagY + tagH, tagX, tagY + tagH - tagR);
-      ctx.lineTo(tagX, tagY + tagR);
-      ctx.quadraticCurveTo(tagX, tagY, tagX + tagR, tagY);
-      ctx.closePath();
+      ctx.arc(SIZE - 120, 120, 200, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(255,255,255,0.07)`;
       ctx.fill();
-      ctx.font = `bold 22px "NotoSansKR"`;
+      ctx.beginPath();
+      ctx.arc(SIZE - 120, 120, 130, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(255,255,255,0.07)`;
+      ctx.fill();
+
+      // 좌측 하단 장식 원
+      ctx.beginPath();
+      ctx.arc(100, SIZE - 100, 160, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(255,255,255,0.06)`;
+      ctx.fill();
+
+      // 슬라이드 번호 (상단 좌측 — 흰색 원형 배지)
+      ctx.beginPath();
+      ctx.arc(70, 70, 45, 0, Math.PI * 2);
+      ctx.fillStyle = "rgba(255,255,255,0.25)";
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(70, 70, 45, 0, Math.PI * 2);
+      ctx.strokeStyle = "rgba(255,255,255,0.6)";
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.font = `bold 26px "NotoSansKR"`;
       ctx.fillStyle = "#ffffff";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.fillText(`${i + 1} / ${slides.length}`, tagX + tagW / 2, tagY + tagH / 2);
+      ctx.fillText(`${i + 1}`, 70, 70);
 
-      // 메인 슬라이드 텍스트 (하단 영역)
-      const textAreaTop = SIZE * 0.52;
-      const maxWidth = SIZE - 100;
-      ctx.font = `bold 72px "NotoSansKR"`;
+      // 총 슬라이드 수 (작게)
+      ctx.font = `16px "NotoSansKR"`;
+      ctx.fillStyle = "rgba(255,255,255,0.65)";
+      ctx.fillText(`/ ${slides.length}`, 70, 100);
+
+      // 상단 가로선
+      ctx.strokeStyle = "rgba(255,255,255,0.25)";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(130, 70);
+      ctx.lineTo(SIZE - 60, 70);
+      ctx.stroke();
+
+      // 메인 텍스트 (중앙 — 큰 폰트)
+      const maxWidth = SIZE - 120;
+      ctx.font = `bold 80px "NotoSansKR"`;
       ctx.fillStyle = "#ffffff";
       ctx.textAlign = "center";
-      ctx.textBaseline = "top";
-      ctx.shadowColor = "rgba(0,0,0,0.95)";
-      ctx.shadowBlur = 16;
+      ctx.textBaseline = "middle";
+      ctx.shadowColor = "rgba(0,0,0,0.6)";
+      ctx.shadowBlur = 20;
       ctx.shadowOffsetX = 2;
       ctx.shadowOffsetY = 3;
 
-      const lines = wrapText(ctx, slides[i], maxWidth, 5);
-      const lineHeight = 90;
+      const lines = wrapText(ctx, slides[i], maxWidth, 4);
+      const lineHeight = 100;
+      const totalH = lines.length * lineHeight;
+      const startY = SIZE / 2 - totalH / 2 + lineHeight / 2;
       lines.forEach((line, j) => {
-        ctx.fillText(line, SIZE / 2, textAreaTop + j * lineHeight);
+        ctx.fillText(line, SIZE / 2, startY + j * lineHeight);
       });
 
-      // 액센트 구분선
+      // 텍스트 아래 흰색 구분선
       ctx.shadowColor = "transparent"; ctx.shadowBlur = 0;
-      ctx.strokeStyle = accent;
-      ctx.lineWidth = 4;
-      const lineY = textAreaTop + lines.length * lineHeight + 20;
+      const sepY = startY + totalH + 28;
+      ctx.strokeStyle = "rgba(255,255,255,0.55)";
+      ctx.lineWidth = 3;
       ctx.beginPath();
-      ctx.moveTo(SIZE / 2 - 80, lineY);
-      ctx.lineTo(SIZE / 2 + 80, lineY);
+      ctx.moveTo(SIZE / 2 - 100, sepY);
+      ctx.lineTo(SIZE / 2 + 100, sepY);
       ctx.stroke();
 
-      // 말씀 구절 (최하단)
-      ctx.font = `28px "NotoSansKR"`;
-      ctx.fillStyle = "rgba(255,255,255,0.80)";
+      // 말씀 구절 (하단)
+      ctx.font = `30px "NotoSansKR"`;
+      ctx.fillStyle = "rgba(255,255,255,0.85)";
       ctx.textAlign = "center";
       ctx.textBaseline = "bottom";
-      ctx.fillText(`— ${verseReference} —`, SIZE / 2, SIZE - 45);
+      ctx.fillText(`— ${verseReference} —`, SIZE / 2, SIZE - 52);
 
-      results.push(`data:image/jpeg;base64,${canvas.toBuffer("image/jpeg", { quality: 0.92 }).toString("base64")}`);
+      // 하단 가로선
+      ctx.strokeStyle = "rgba(255,255,255,0.20)";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(60, SIZE - 100);
+      ctx.lineTo(SIZE - 60, SIZE - 100);
+      ctx.stroke();
+
+      results.push(`data:image/jpeg;base64,${canvas.toBuffer("image/jpeg", { quality: 0.93 }).toString("base64")}`);
     }
 
     return results;

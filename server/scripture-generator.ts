@@ -340,29 +340,9 @@ JSON: { "caption": "캡션 전문", "hashtags": ["#해시태그1",...(8-10개)] 
       thumbnailBase64 = await createSmallThumbnail(imageBase64);
       imageUrl = ""; // base64 사용 시 imageUrl 불필요
 
-      // 슬라이드별 이미지 생성 (슬라이드 텍스트 내용에 맞는 이미지)
+      // 슬라이드 이미지 생성 (동일 배경 + 슬라이드별 색상 테마로 차별화)
       if (instagramSlides.length > 0) {
-        const slideBackgrounds = await Promise.all(
-          instagramSlides.map(async (slideText, si) => {
-            try {
-              // 슬라이드 텍스트 키워드로 이미지 주제 결정
-              const prompt = slideTextToImagePrompt(slideText, si);
-              const encoded = encodeURIComponent(prompt);
-              const seed = Math.floor(Math.random() * 9999999);
-              const res = await fetch(
-                `https://image.pollinations.ai/prompt/${encoded}?width=1024&height=1024&nologo=true&seed=${seed}&enhance=true`,
-                { signal: AbortSignal.timeout(45000) }
-              );
-              if (res.ok) {
-                const buf = Buffer.from(await res.arrayBuffer());
-                return `data:image/jpeg;base64,${buf.toString("base64")}`;
-              }
-            } catch {}
-            return rawBase64;
-          })
-        );
-
-        instagramSlideImages = await createInstagramSlides(slideBackgrounds, instagramSlides, textContent.verseReference);
+        instagramSlideImages = await createInstagramSlides(rawBase64, instagramSlides, textContent.verseReference);
         instagramSlideThumbUrls = await Promise.all(
           instagramSlideImages.map(img => createSlideThumbnail(img).catch(() => ""))
         );
