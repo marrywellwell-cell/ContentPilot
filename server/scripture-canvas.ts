@@ -49,7 +49,46 @@ function base64ToBuffer(dataUrl: string): Buffer {
   return Buffer.from(b64, "base64");
 }
 
-// base64 이미지에 말씀 텍스트 오버레이 → base64 반환 (파일 I/O 없음)
+// ── 슬라이드 테마 ─────────────────────────────────────────────────────────────
+
+interface SlideTheme {
+  bg1: string; bg2: string;
+  accent: string; text: string;
+  circle1: string; circle2: string;
+  bar: string;
+  name: string;
+}
+
+function getSlideTheme(slideText: string, index: number): SlideTheme {
+  const t = slideText;
+  const themes: SlideTheme[] = [
+    // 0 Rose — 사랑/은혜/선행
+    { name:"rose", bg1:"#FFF5F7", bg2:"#FFE4EE", accent:"#E91E63", text:"#4A0010",
+      circle1:"rgba(233,30,99,0.10)", circle2:"rgba(255,105,155,0.08)", bar:"#E91E63" },
+    // 1 Golden — 기도/찬양/감사
+    { name:"golden", bg1:"#FFFDE7", bg2:"#FFF3C0", accent:"#F57F17", text:"#3E2000",
+      circle1:"rgba(245,127,23,0.10)", circle2:"rgba(255,200,50,0.08)", bar:"#F57F17" },
+    // 2 Sky — 믿음/말씀/신뢰
+    { name:"sky", bg1:"#E3F2FD", bg2:"#DDEEFF", accent:"#1565C0", text:"#0A1E40",
+      circle1:"rgba(21,101,192,0.09)", circle2:"rgba(100,181,246,0.10)", bar:"#1565C0" },
+    // 3 Lavender — 소망/비전/새로운
+    { name:"lavender", bg1:"#F3E5F5", bg2:"#EAD5F7", accent:"#7B1FA2", text:"#2D0050",
+      circle1:"rgba(123,31,162,0.09)", circle2:"rgba(186,104,200,0.10)", bar:"#7B1FA2" },
+    // 4 Mint — 평화/공동체/함께
+    { name:"mint", bg1:"#E0F7FA", bg2:"#D0F5EC", accent:"#00796B", text:"#00271A",
+      circle1:"rgba(0,121,107,0.09)", circle2:"rgba(77,182,172,0.10)", bar:"#00796B" },
+  ];
+
+  if (t.match(/사랑|love|섬기|봉사|은혜|grace|선행|헌신/)) return themes[0];
+  if (t.match(/기도|pray|간구|찬양|praise|감사|경배|worship/)) return themes[1];
+  if (t.match(/믿음|faith|신뢰|말씀|word|성경|scripture|진리/)) return themes[2];
+  if (t.match(/소망|hope|비전|vision|새로운|미래|기대|부활/)) return themes[3];
+  if (t.match(/평화|peace|평안|공동체|함께|연합|교회|화해/)) return themes[4];
+  return themes[index % themes.length];
+}
+
+// ── 메인 이미지 오버레이 (밝은 frosted-glass 스타일) ─────────────────────────
+
 export async function addVerseOverlayToBase64(
   imageBase64: string,
   verseReference: string,
@@ -60,74 +99,83 @@ export async function addVerseOverlayToBase64(
     const { createCanvas, loadImage } = await import("canvas");
 
     const image = await loadImage(base64ToBuffer(imageBase64));
-    const canvas = createCanvas(image.width, image.height);
-    const ctx = canvas.getContext("2d");
+    const W = image.width, H = image.height;
+    const canvas = createCanvas(W, H);
+    const ctx = canvas.getContext("2d") as any;
+
+    // 원본 이미지
     ctx.drawImage(image, 0, 0);
 
-    const padding = 60;
-    const maxWidth = image.width - padding * 2;
-    const centerX = image.width / 2;
-    const centerY = image.height / 2;
+    // 이미지 전체에 흰색 오버레이로 밝게
+    ctx.fillStyle = "rgba(255,255,255,0.35)";
+    ctx.fillRect(0, 0, W, H);
 
-    let contentFontSize = 36;
-    let refFontSize = 30;
-    let lines: string[] = [];
-    let lineHeight = contentFontSize * 1.4;
+    // 중앙 frosted-glass 패널
+    const padX = W * 0.06;
+    const panelW = W - padX * 2;
+    const contentFontSize = Math.max(26, Math.min(36, W * 0.034));
+    const refFontSize = contentFontSize - 6;
+    const lineHeight = contentFontSize * 1.55;
 
-    for (let sz = 36; sz >= 22; sz -= 2) {
-      contentFontSize = sz;
-      refFontSize = Math.max(sz - 6, 20);
-      lineHeight = sz * 1.4;
-      ctx.font = `bold ${contentFontSize}px "NotoSansKR"`;
-      lines = wrapText(ctx, verseContent, maxWidth, 12);
-      if (lines.length * lineHeight + refFontSize + 60 <= image.height * 0.7 && lines.length <= 8) break;
-    }
-
+    ctx.font = `bold ${contentFontSize}px "NotoSansKR"`;
+    let lines = wrapText(ctx, verseContent, panelW - 70, 8);
     if (lines.length > 8) { lines = lines.slice(0, 8); lines[7] = lines[7].slice(0, -3) + "..."; }
 
-    const totalTextHeight = lines.length * lineHeight + refFontSize + 50;
-    const textStartY = centerY - totalTextHeight / 2 + lineHeight / 2;
-    const boxPadding = 35;
-    const boxY = textStartY - lineHeight / 2 - boxPadding;
-    const boxHeight = totalTextHeight + boxPadding * 2;
-    const radius = 20;
-    const boxX = padding - boxPadding;
-    const boxWidth = image.width - (padding - boxPadding) * 2;
+    const totalTxtH = lines.length * lineHeight + refFontSize + 50;
+    const panelH = totalTxtH + 70;
+    const panelY = H / 2 - panelH / 2;
 
-    ctx.fillStyle = "rgba(0,0,0,0.65)";
+    // 패널 배경 (흰색 반투명)
+    const radius = 18;
+    ctx.fillStyle = "rgba(255,255,255,0.82)";
     ctx.beginPath();
-    ctx.moveTo(boxX + radius, boxY);
-    ctx.lineTo(boxX + boxWidth - radius, boxY);
-    ctx.quadraticCurveTo(boxX + boxWidth, boxY, boxX + boxWidth, boxY + radius);
-    ctx.lineTo(boxX + boxWidth, boxY + boxHeight - radius);
-    ctx.quadraticCurveTo(boxX + boxWidth, boxY + boxHeight, boxX + boxWidth - radius, boxY + boxHeight);
-    ctx.lineTo(boxX + radius, boxY + boxHeight);
-    ctx.quadraticCurveTo(boxX, boxY + boxHeight, boxX, boxY + boxHeight - radius);
-    ctx.lineTo(boxX, boxY + radius);
-    ctx.quadraticCurveTo(boxX, boxY, boxX + radius, boxY);
+    ctx.moveTo(padX + radius, panelY);
+    ctx.lineTo(padX + panelW - radius, panelY);
+    ctx.quadraticCurveTo(padX + panelW, panelY, padX + panelW, panelY + radius);
+    ctx.lineTo(padX + panelW, panelY + panelH - radius);
+    ctx.quadraticCurveTo(padX + panelW, panelY + panelH, padX + panelW - radius, panelY + panelH);
+    ctx.lineTo(padX + radius, panelY + panelH);
+    ctx.quadraticCurveTo(padX, panelY + panelH, padX, panelY + panelH - radius);
+    ctx.lineTo(padX, panelY + radius);
+    ctx.quadraticCurveTo(padX, panelY, padX + radius, panelY);
     ctx.closePath();
     ctx.fill();
 
-    ctx.fillStyle = "#ffffff";
+    // 상단 액센트 라인
+    ctx.fillStyle = "#E91E63";
+    ctx.beginPath();
+    ctx.moveTo(padX + radius, panelY);
+    ctx.lineTo(padX + panelW - radius, panelY);
+    ctx.quadraticCurveTo(padX + panelW, panelY, padX + panelW, panelY + radius);
+    ctx.lineTo(padX + panelW, panelY + 6);
+    ctx.lineTo(padX, panelY + 6);
+    ctx.lineTo(padX, panelY + radius);
+    ctx.quadraticCurveTo(padX, panelY, padX + radius, panelY);
+    ctx.closePath();
+    ctx.fill();
+
+    // 텍스트
+    const txtStartY = panelY + 45 + lineHeight / 2;
+    ctx.font = `bold ${contentFontSize}px "NotoSansKR"`;
+    ctx.fillStyle = "#1a1a2e";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.font = `bold ${contentFontSize}px "NotoSansKR"`;
-    ctx.shadowColor = "rgba(0,0,0,0.8)";
-    ctx.shadowBlur = 6;
-    ctx.shadowOffsetX = 2;
-    ctx.shadowOffsetY = 2;
-    lines.forEach((line, i) => ctx.fillText(line, centerX, textStartY + i * lineHeight));
+    ctx.shadowColor = "rgba(255,255,255,0.8)";
+    ctx.shadowBlur = 4;
+    lines.forEach((line, i) => ctx.fillText(line, W / 2, txtStartY + i * lineHeight));
 
+    // 구절 참조
+    ctx.shadowColor = "transparent"; ctx.shadowBlur = 0;
     ctx.font = `${refFontSize}px "NotoSansKR"`;
-    ctx.fillStyle = "#e0e0e0";
-    ctx.fillText(`- ${verseReference} -`, centerX, textStartY + lines.length * lineHeight + 35);
+    ctx.fillStyle = "#E91E63";
+    ctx.fillText(`— ${verseReference} —`, W / 2, txtStartY + lines.length * lineHeight + 28);
 
-    ctx.shadowColor = "transparent"; ctx.shadowBlur = 0; ctx.shadowOffsetX = 0; ctx.shadowOffsetY = 0;
-    ctx.font = `16px "NotoSansKR"`;
-    ctx.fillStyle = "rgba(255,255,255,0.6)";
+    // 워터마크
+    ctx.font = `14px "NotoSansKR"`;
+    ctx.fillStyle = "rgba(100,100,100,0.55)";
     ctx.textAlign = "right";
     ctx.textBaseline = "bottom";
-    ctx.fillText("AI 생성 이미지", image.width - 20, image.height - 15);
+    ctx.fillText("AI 생성 이미지", W - 18, H - 14);
 
     return `data:image/png;base64,${canvas.toBuffer("image/png").toString("base64")}`;
   } catch (err) {
@@ -136,194 +184,108 @@ export async function addVerseOverlayToBase64(
   }
 }
 
-// 200×200 JPEG 썸네일 생성 (~8KB) — DB 저장용
-export async function createSmallThumbnail(imageBase64: string, size = 200): Promise<string> {
-  try {
-    const { createCanvas, loadImage } = await import("canvas");
-    const image = await loadImage(base64ToBuffer(imageBase64));
+// ── 인스타그램 슬라이드 생성 (순수 캔버스 파스텔 — 배경 이미지 불사용) ────────
 
-    // 정사각형 크롭
-    const side = Math.min(image.width, image.height);
-    const sx = (image.width - side) / 2;
-    const sy = (image.height - side) / 2;
-
-    const canvas = createCanvas(size, size);
-    const ctx = canvas.getContext("2d");
-    ctx.drawImage(image, sx, sy, side, side, 0, 0, size, size);
-
-    return `data:image/jpeg;base64,${canvas.toBuffer("image/jpeg", { quality: 0.72 }).toString("base64")}`;
-  } catch {
-    return "";
-  }
-}
-
-// 슬라이드 텍스트 → 파스텔 테마 선택
-function getSlideTheme(slideText: string, index: number) {
-  const t = slideText.toLowerCase();
-  const themes = [
-    // 0 Rose — 사랑/은혜
-    { wash: [255, 192, 203] as [number,number,number], panelBg: "rgba(255,240,244,0.88)", textColor: "#5C001A", accentColor: "#D63B5C", num: "#C41E3A" },
-    // 1 Golden — 기도/찬양/감사
-    { wash: [255, 220, 150] as [number,number,number], panelBg: "rgba(255,251,235,0.88)", textColor: "#4A2800", accentColor: "#B8860B", num: "#D4860A" },
-    // 2 Sky — 믿음/말씀/소망
-    { wash: [173, 216, 230] as [number,number,number], panelBg: "rgba(235,247,255,0.88)", textColor: "#0A1E40", accentColor: "#1565C0", num: "#1976D2" },
-    // 3 Lavender — 소망/비전/새로운
-    { wash: [210, 180, 235] as [number,number,number], panelBg: "rgba(248,242,255,0.88)", textColor: "#2D0050", accentColor: "#7B1FA2", num: "#8E24AA" },
-    // 4 Mint — 평화/공동체/함께
-    { wash: [152, 225, 195] as [number,number,number], panelBg: "rgba(235,255,248,0.88)", textColor: "#00271A", accentColor: "#00796B", num: "#00897B" },
-  ];
-
-  if (t.match(/사랑|love|섬기|봉사|은혜|grace|선행/)) return themes[0];
-  if (t.match(/기도|pray|간구|찬양|praise|감사|경배/)) return themes[1];
-  if (t.match(/믿음|faith|신뢰|말씀|word|성경|scripture/)) return themes[2];
-  if (t.match(/소망|hope|비전|vision|새로운|미래|기대/)) return themes[3];
-  if (t.match(/평화|peace|평안|공동체|함께|연합|교회/)) return themes[4];
-  return themes[index % themes.length];
-}
-
-// 인스타그램 슬라이드 이미지 생성
-// - 배경: 슬라이드마다 다른 크롭 위치 + 파스텔 컬러 워시
-// - 하단: 반투명 패널 + 진한 텍스트 (가독성 최우선)
 export async function createInstagramSlides(
-  imageBase64: string | string[],
+  _imageBase64: string | string[],  // 더 이상 배경으로 사용 안 함
   slides: string[],
   verseReference: string
 ): Promise<string[]> {
   if (!slides.length) return [];
 
-  const backgrounds = Array.isArray(imageBase64) ? imageBase64 : Array(slides.length).fill(imageBase64);
-
   try {
     await ensureFonts();
-    const { createCanvas, loadImage } = await import("canvas");
+    const { createCanvas } = await import("canvas");
     const SIZE = 1080;
-
-    const firstBg = await loadImage(base64ToBuffer(backgrounds[0]));
-
-    // 슬라이드별 크롭 오프셋 (같은 이미지라도 다른 구도처럼 보이게)
-    const cropOffsets = [
-      { ox: 0.00, oy: 0.00 }, // 좌상단
-      { ox: 0.10, oy: 0.05 }, // 약간 오른쪽
-      { ox: 0.20, oy: 0.00 }, // 우상단
-      { ox: 0.00, oy: 0.15 }, // 좌하단
-      { ox: 0.10, oy: 0.12 }, // 중앙
-    ];
-
     const results: string[] = [];
 
     for (let i = 0; i < slides.length; i++) {
       const theme = getSlideTheme(slides[i], i);
-      const offset = cropOffsets[i % cropOffsets.length];
-      const [wr, wg, wb] = theme.wash;
-
       const canvas = createCanvas(SIZE, SIZE);
       const ctx = canvas.getContext("2d") as any;
 
-      // 배경 이미지 로드
-      let bg = firstBg;
-      const bgSrc = backgrounds[i];
-      if (bgSrc && bgSrc !== backgrounds[0]) {
-        try { bg = await loadImage(base64ToBuffer(bgSrc)); } catch {}
-      }
-
-      // 배경 이미지: 1.25배 확대 후 오프셋으로 다르게 크롭
-      const scale = 1.25;
-      const scaledW = bg.width * scale;
-      const scaledH = bg.height * scale;
-      const side = Math.min(scaledW, scaledH);
-      const srcSide = side / scale;
-      const maxOffX = (bg.width - srcSide) * offset.ox;
-      const maxOffY = (bg.height - srcSide) * offset.oy;
-      ctx.drawImage(bg, maxOffX, maxOffY, srcSide, srcSide, 0, 0, SIZE, SIZE);
-
-      // ① 파스텔 컬러 워시 (이미지 전체를 밝고 부드럽게)
-      ctx.fillStyle = `rgba(${wr},${wg},${wb},0.52)`;
+      // ① 파스텔 그라데이션 배경 (대각선)
+      const bgGrad = ctx.createLinearGradient(0, 0, SIZE * 0.7, SIZE);
+      bgGrad.addColorStop(0, theme.bg1);
+      bgGrad.addColorStop(1, theme.bg2);
+      ctx.fillStyle = bgGrad;
       ctx.fillRect(0, 0, SIZE, SIZE);
 
-      // ② 상단 흰색 페이드 (이미지 상단 더 밝게)
-      const topFade = ctx.createLinearGradient(0, 0, 0, SIZE * 0.45);
-      topFade.addColorStop(0, "rgba(255,255,255,0.45)");
-      topFade.addColorStop(1, "rgba(255,255,255,0)");
-      ctx.fillStyle = topFade;
-      ctx.fillRect(0, 0, SIZE, SIZE * 0.45);
-
-      // ③ 장식 원 (테마 컬러, 반투명)
-      const circlePositions = [
-        [SIZE * 0.82, SIZE * 0.12, SIZE * 0.18],
-        [SIZE * 0.12, SIZE * 0.22, SIZE * 0.12],
-        [SIZE * 0.72, SIZE * 0.08, SIZE * 0.10],
-      ] as [number, number, number][];
-      for (const [cx, cy, cr] of circlePositions) {
-        const circGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, cr);
-        circGrad.addColorStop(0, `rgba(${wr},${wg},${wb},0.35)`);
-        circGrad.addColorStop(1, `rgba(${wr},${wg},${wb},0)`);
-        ctx.fillStyle = circGrad;
-        ctx.beginPath();
-        ctx.arc(cx, cy, cr, 0, Math.PI * 2);
-        ctx.fill();
-      }
-
-      // ④ 하단 반투명 패널 (텍스트 배경)
-      const panelY = SIZE * 0.50;
-      const panelGrad = ctx.createLinearGradient(0, panelY, 0, SIZE);
-      panelGrad.addColorStop(0, "rgba(255,255,255,0)");
-      panelGrad.addColorStop(0.25, theme.panelBg);
-      panelGrad.addColorStop(1, theme.panelBg);
-      ctx.fillStyle = panelGrad;
-      ctx.fillRect(0, panelY, SIZE, SIZE - panelY);
-
-      // ⑤ 슬라이드 번호 배지 (상단 좌측)
-      const badgeR = 36;
+      // ② 큰 장식 원 (우상단)
+      const cg1 = ctx.createRadialGradient(SIZE * 0.88, SIZE * 0.12, 0, SIZE * 0.88, SIZE * 0.12, SIZE * 0.52);
+      cg1.addColorStop(0, theme.circle1);
+      cg1.addColorStop(1, "rgba(255,255,255,0)");
+      ctx.fillStyle = cg1;
       ctx.beginPath();
-      ctx.arc(56, 56, badgeR, 0, Math.PI * 2);
-      ctx.fillStyle = theme.num;
+      ctx.arc(SIZE * 0.88, SIZE * 0.12, SIZE * 0.52, 0, Math.PI * 2);
       ctx.fill();
-      ctx.font = `bold 24px "NotoSansKR"`;
-      ctx.fillStyle = "#ffffff";
+
+      // ③ 작은 장식 원 (좌하단)
+      const cg2 = ctx.createRadialGradient(SIZE * 0.12, SIZE * 0.86, 0, SIZE * 0.12, SIZE * 0.86, SIZE * 0.26);
+      cg2.addColorStop(0, theme.circle2);
+      cg2.addColorStop(1, "rgba(255,255,255,0)");
+      ctx.fillStyle = cg2;
+      ctx.beginPath();
+      ctx.arc(SIZE * 0.12, SIZE * 0.86, SIZE * 0.26, 0, Math.PI * 2);
+      ctx.fill();
+
+      // ④ 상단 액센트 바
+      ctx.fillStyle = theme.bar;
+      ctx.fillRect(0, 0, SIZE, 8);
+
+      // ⑤ 슬라이드 번호 (상단 좌)
+      const numStr = String(i + 1).padStart(2, "0");
+      const totStr = `/ ${String(slides.length).padStart(2, "0")}`;
+      ctx.font = `bold 52px "NotoSansKR"`;
+      ctx.fillStyle = theme.accent;
+      ctx.textAlign = "left";
+      ctx.textBaseline = "top";
+      ctx.fillText(numStr, 56, 36);
+
+      ctx.font = `28px "NotoSansKR"`;
+      ctx.fillStyle = theme.accent + "88";
+      ctx.fillText(totStr, 56 + ctx.measureText(numStr).width + 12, 53);
+
+      // ⑥ 십자가 장식 (우상단)
+      const cx = SIZE - 72, cy = 52, arm = 22, thick = 6;
+      ctx.fillStyle = theme.accent + "55";
+      ctx.fillRect(cx - arm, cy - thick / 2, arm * 2, thick);
+      ctx.fillRect(cx - thick / 2, cy - arm, thick, arm * 2);
+
+      // ⑦ 메인 텍스트
+      const maxTxtW = SIZE - 120;
+      ctx.font = `bold 82px "NotoSansKR"`;
+      ctx.fillStyle = theme.text;
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.fillText(`${i + 1}`, 56, 57);
-
-      // 슬라이드 총 수 (배지 옆)
-      ctx.font = `18px "NotoSansKR"`;
-      ctx.fillStyle = `rgba(${wr > 200 ? 80 : 200},${wg > 200 ? 80 : 200},${wb > 200 ? 80 : 200},0.85)`;
-      ctx.textAlign = "left";
-      ctx.fillText(`/ ${slides.length}`, 100, 57);
-
-      // ⑥ 메인 텍스트 (패널 위, 진한 컬러)
-      const maxTxtW = SIZE - 100;
-      ctx.font = `bold 76px "NotoSansKR"`;
-      ctx.fillStyle = theme.textColor;
-      ctx.textAlign = "center";
-      ctx.textBaseline = "top";
-      ctx.shadowColor = "rgba(255,255,255,0.6)";
-      ctx.shadowBlur = 10;
+      ctx.shadowColor = "rgba(255,255,255,0.7)";
+      ctx.shadowBlur = 14;
 
       const lines = wrapText(ctx, slides[i], maxTxtW, 4);
-      const lh = 94;
+      const lh = 104;
       const totalTxtH = lines.length * lh;
-      const txtStartY = SIZE * 0.56;
-      lines.forEach((line, j) => {
-        ctx.fillText(line, SIZE / 2, txtStartY + j * lh);
-      });
+      const txtCenterY = SIZE * 0.50;
+      const txtStartY = txtCenterY - totalTxtH / 2 + lh / 2;
+      lines.forEach((line, j) => ctx.fillText(line, SIZE / 2, txtStartY + j * lh));
 
-      // ⑦ 액센트 구분선
       ctx.shadowColor = "transparent"; ctx.shadowBlur = 0;
-      const lineY = txtStartY + totalTxtH + 22;
-      ctx.strokeStyle = theme.accentColor;
+
+      // ⑧ 구분선
+      const lineY = txtCenterY + totalTxtH / 2 + 38;
+      ctx.strokeStyle = theme.accent;
       ctx.lineWidth = 3;
       ctx.lineCap = "round";
       ctx.beginPath();
-      ctx.moveTo(SIZE / 2 - 70, lineY);
-      ctx.lineTo(SIZE / 2 + 70, lineY);
+      ctx.moveTo(SIZE / 2 - 90, lineY);
+      ctx.lineTo(SIZE / 2 + 90, lineY);
       ctx.stroke();
 
-      // ⑧ 말씀 구절 (하단)
-      ctx.font = `26px "NotoSansKR"`;
-      ctx.fillStyle = theme.accentColor;
+      // ⑨ 말씀 구절 (하단 중앙)
+      ctx.font = `30px "NotoSansKR"`;
+      ctx.fillStyle = theme.accent;
       ctx.textAlign = "center";
       ctx.textBaseline = "bottom";
-      ctx.fillText(`— ${verseReference} —`, SIZE / 2, SIZE - 42);
+      ctx.fillText(`— ${verseReference} —`, SIZE / 2, SIZE - 52);
 
       results.push(`data:image/jpeg;base64,${canvas.toBuffer("image/jpeg", { quality: 0.94 }).toString("base64")}`);
     }
@@ -335,12 +297,29 @@ export async function createInstagramSlides(
   }
 }
 
-// 슬라이드용 썸네일 (400×400 JPEG ~20KB) — DB 저장용
+// ── 썸네일 유틸 ───────────────────────────────────────────────────────────────
+
+export async function createSmallThumbnail(imageBase64: string, size = 200): Promise<string> {
+  try {
+    const { createCanvas, loadImage } = await import("canvas");
+    const image = await loadImage(base64ToBuffer(imageBase64));
+    const side = Math.min(image.width, image.height);
+    const sx = (image.width - side) / 2;
+    const sy = (image.height - side) / 2;
+    const canvas = createCanvas(size, size);
+    const ctx = canvas.getContext("2d");
+    ctx.drawImage(image, sx, sy, side, side, 0, 0, size, size);
+    return `data:image/jpeg;base64,${canvas.toBuffer("image/jpeg", { quality: 0.72 }).toString("base64")}`;
+  } catch {
+    return "";
+  }
+}
+
 export async function createSlideThumbnail(imageBase64: string): Promise<string> {
   return createSmallThumbnail(imageBase64, 400);
 }
 
-// 파일 기반 오버레이 (하위 호환 — 기존 scripture-blog.ts에서 호출)
+// 파일 기반 오버레이 (scripture-blog.ts에서 호출)
 export async function addVerseOverlayPublic(
   imagePath: string,
   verseReference: string,
