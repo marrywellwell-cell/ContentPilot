@@ -134,6 +134,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Setup authentication
   await setupAuth(app);
 
+  // Health check (keepalive ping용 — 인증 불필요)
+  app.get("/health", (_req, res) => res.json({ status: "ok", time: new Date().toISOString() }));
+
   // Auth routes
   app.get("/api/auth/user", isAuthenticated, async (req: any, res) => {
     try {

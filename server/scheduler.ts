@@ -4,9 +4,28 @@ import pLimit from "p-limit";
 import { generateYouTubeScriptureContent, generateScriptureImage } from "./ai";
 import { publishContentToAllPlatforms } from "./publisher";
 
+// Render 무료 플랜 슬립 방지: 14분마다 자기 자신에게 HTTP 핑
+function startKeepalive() {
+  // RENDER_EXTERNAL_URL은 Render가 자동 주입하는 환경변수
+  const selfUrl = process.env.RENDER_EXTERNAL_URL || process.env.APP_BASE_URL;
+  if (!selfUrl) return; // 로컬 개발 환경에서는 실행 안 함
+
+  cron.schedule("*/14 * * * *", async () => {
+    try {
+      await fetch(`${selfUrl}/health`);
+      console.log("[keepalive] ping OK");
+    } catch (e: any) {
+      console.warn("[keepalive] ping 실패:", e.message?.slice(0, 60));
+    }
+  });
+
+  console.log(`[keepalive] 14분마다 자동 핑 시작 → ${selfUrl}/health`);
+}
+
 // Check for scheduled content every minute
 export function startScheduler() {
   console.log("Starting content scheduler...");
+  startKeepalive();
 
   // Scheduled content publishing - every minute
   cron.schedule("* * * * *", async () => {
