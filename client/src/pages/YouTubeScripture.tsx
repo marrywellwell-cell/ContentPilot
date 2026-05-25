@@ -632,6 +632,7 @@ function ContentDetailDialog({
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [localImageUrl, setLocalImageUrl] = useState<string | undefined>();
   const [localImageBase64, setLocalImageBase64] = useState<string | null>(null);
+  const [imageLoadError, setImageLoadError] = useState(false);
 
   const generateImageMutation = useMutation({
     mutationFn: async (id: string) => {
@@ -649,8 +650,17 @@ function ContentDetailDialog({
   });
 
   const handleOpenChange = (v: boolean) => {
-    if (!v) { setLocalImageUrl(undefined); setLocalImageBase64(null); }
+    if (!v) { setLocalImageUrl(undefined); setLocalImageBase64(null); setImageLoadError(false); }
     onOpenChange(v);
+  };
+
+  const handleDownload = (url: string) => {
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `scripture-${item?.bibleReference?.replace(/\s/g, "-") || Date.now()}.png`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   if (!item) return null;
@@ -692,11 +702,34 @@ function ContentDetailDialog({
           <div className="px-6 pb-6 space-y-5 mt-4">
 
             {/* 이미지 */}
-            {imageUrl ? (
-              <div className="flex justify-center">
-                <div className="relative w-full max-w-xs aspect-square rounded-xl overflow-hidden bg-muted shadow-md">
-                  <img src={imageUrl} alt={item.bibleReference} className="w-full h-full object-cover"
-                    onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+            {imageUrl && !imageLoadError ? (
+              <div className="space-y-2">
+                <div className="flex justify-center">
+                  <div className="relative w-full max-w-xs aspect-square rounded-xl overflow-hidden bg-muted shadow-md">
+                    <img
+                      src={imageUrl}
+                      alt={item.bibleReference}
+                      className="w-full h-full object-cover"
+                      onError={() => setImageLoadError(true)}
+                    />
+                  </div>
+                </div>
+                <div className="flex gap-2 justify-center">
+                  <Button size="sm" variant="outline" className="gap-1.5" onClick={() => handleDownload(imageUrl)}>
+                    <Download className="w-3.5 h-3.5" />이미지 다운로드
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="gap-1.5 text-indigo-600 border-indigo-300"
+                    onClick={() => generateImageMutation.mutate(item.id)}
+                    disabled={generateImageMutation.isPending}
+                  >
+                    {generateImageMutation.isPending
+                      ? <><Loader2 className="w-3.5 h-3.5 animate-spin" />생성 중...</>
+                      : <><RefreshCw className="w-3.5 h-3.5" />재생성</>
+                    }
+                  </Button>
                 </div>
               </div>
             ) : (
@@ -706,7 +739,7 @@ function ContentDetailDialog({
                   <p className="text-sm text-muted-foreground">이미지가 없습니다</p>
                   <Button
                     size="sm"
-                    onClick={() => generateImageMutation.mutate(item.id)}
+                    onClick={() => { setImageLoadError(false); generateImageMutation.mutate(item.id); }}
                     disabled={generateImageMutation.isPending}
                     className="gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white"
                   >
