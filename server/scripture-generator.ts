@@ -302,3 +302,32 @@ JSON: { "caption": "캡션 전문", "hashtags": ["#해시태그1",...(8-10개)] 
     videoSummary: textContent.summary.join(" "),
   };
 }
+
+// ─── 기존 콘텐츠용 이미지만 단독 생성 ────────────────────────────────────────
+
+export async function generateVerseImage(
+  verseReference: string,
+  verseContent: string
+): Promise<{ imageBase64?: string; thumbnailBase64?: string; imageUrl: string }> {
+  const UNSPLASH_FALLBACK = "https://images.unsplash.com/photo-1499652848871-1527a310b13a?w=1080&h=1080&fit=crop";
+  const imagePrompt = `Christian devotional background. Peaceful spiritual atmosphere, soft golden morning light, open Bible on wooden table or serene nature landscape with warm light. Square format. Calming colors, high quality, minimalist.`;
+
+  let imageUrl = UNSPLASH_FALLBACK;
+  let imageBase64: string | undefined;
+  let thumbnailBase64: string | undefined;
+
+  const rawBase64 = await generateScriptureImageBase64(imagePrompt);
+  if (rawBase64) {
+    try {
+      const { addVerseOverlayToBase64, createSmallThumbnail } = await import("./scripture-canvas");
+      imageBase64 = await addVerseOverlayToBase64(rawBase64, verseReference, verseContent);
+      thumbnailBase64 = await createSmallThumbnail(imageBase64);
+      imageUrl = "";
+    } catch (err: any) {
+      console.warn("[generateVerseImage] canvas 실패:", err.message?.slice(0, 80));
+      imageBase64 = rawBase64;
+    }
+  }
+
+  return { imageBase64, thumbnailBase64, imageUrl };
+}

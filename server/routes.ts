@@ -1297,6 +1297,31 @@ Solution: ${brandAnalysis.solution || "없음"}`;
     }
   });
 
+  // 기존 저장된 콘텐츠에 이미지 생성/추가
+  app.post("/api/scripture-contents/:id/generate-image", isAuthenticated, async (req, res) => {
+    const { generateVerseImage } = await import("./scripture-generator");
+    try {
+      const content = await storage.getScriptureContent(req.params.id);
+      if (!content) return res.status(404).json({ error: "콘텐츠를 찾을 수 없습니다." });
+
+      const { imageBase64, thumbnailBase64, imageUrl } = await generateVerseImage(
+        content.bibleReference || "",
+        content.bibleVerse || ""
+      );
+
+      const newImageUrls = thumbnailBase64
+        ? [thumbnailBase64]
+        : imageUrl ? [imageUrl] : [];
+
+      await storage.updateScriptureContentImages(content.id, newImageUrls);
+
+      res.json({ imageUrls: newImageUrls, imageBase64: imageBase64 || null });
+    } catch (error: any) {
+      console.error("[generate-image] 오류:", error);
+      res.status(500).json({ error: error.message || "이미지 생성 실패" });
+    }
+  });
+
   // 성경 블로그 콘텐츠 생성
   app.post("/api/youtube-scripture/blog", isAuthenticated, async (req, res) => {
     const { generateScriptureBlog } = await import("./scripture-blog");

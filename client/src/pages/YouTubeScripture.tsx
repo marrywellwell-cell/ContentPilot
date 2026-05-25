@@ -620,15 +620,38 @@ function SavedList({
 // ─── 저장된 콘텐츠 상세 다이얼로그 ──────────────────────────────────────────────
 
 function ContentDetailDialog({
-  item, open, onOpenChange, onDelete,
+  item, open, onOpenChange, onDelete, onImageGenerated,
 }: {
   item: ScriptureContent | null;
   open: boolean;
   onOpenChange: (v: boolean) => void;
   onDelete: (id: string) => void;
+  onImageGenerated?: (id: string, imageUrls: string[], imageBase64: string | null) => void;
 }) {
   const { toast } = useToast();
   const [copiedField, setCopiedField] = useState<string | null>(null);
+  const [localImageUrl, setLocalImageUrl] = useState<string | undefined>();
+  const [localImageBase64, setLocalImageBase64] = useState<string | null>(null);
+
+  const generateImageMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await apiRequest(`/api/scripture-contents/${id}/generate-image`, { method: "POST" }) as any;
+      return res as { imageUrls: string[]; imageBase64: string | null };
+    },
+    onSuccess: (data) => {
+      const displayUrl = data.imageBase64 || data.imageUrls?.[0] || "";
+      setLocalImageUrl(displayUrl || undefined);
+      setLocalImageBase64(data.imageBase64);
+      toast({ title: "이미지 생성 완료!" });
+      if (item) onImageGenerated?.(item.id, data.imageUrls, data.imageBase64);
+    },
+    onError: (e: Error) => toast({ title: "이미지 생성 실패", description: e.message, variant: "destructive" }),
+  });
+
+  const handleOpenChange = (v: boolean) => {
+    if (!v) { setLocalImageUrl(undefined); setLocalImageBase64(null); }
+    onOpenChange(v);
+  };
 
   if (!item) return null;
 
@@ -639,13 +662,13 @@ function ContentDetailDialog({
     setTimeout(() => setCopiedField(null), 2000);
   };
 
-  const imageUrl = item.imageUrls?.[0];
+  const imageUrl = localImageUrl ?? (localImageBase64 || item.imageUrls?.[0]);
   const hashtags = item.instagramHashtags || [];
   const caption = item.instagramCaption || "";
   const slides = item.instagramSlides || [];
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="max-w-2xl max-h-[90vh] p-0">
         <DialogHeader className="px-6 pt-6 pb-0">
           <DialogTitle className="flex items-center gap-2 text-lg">
@@ -669,11 +692,29 @@ function ContentDetailDialog({
           <div className="px-6 pb-6 space-y-5 mt-4">
 
             {/* 이미지 */}
-            {imageUrl && (
+            {imageUrl ? (
               <div className="flex justify-center">
                 <div className="relative w-full max-w-xs aspect-square rounded-xl overflow-hidden bg-muted shadow-md">
                   <img src={imageUrl} alt={item.bibleReference} className="w-full h-full object-cover"
                     onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+                </div>
+              </div>
+            ) : (
+              <div className="flex justify-center">
+                <div className="w-full max-w-xs aspect-square rounded-xl bg-gradient-to-br from-indigo-100 to-purple-100 dark:from-indigo-950/40 dark:to-purple-950/40 border-2 border-dashed border-indigo-200 dark:border-indigo-800 flex flex-col items-center justify-center gap-3">
+                  <ImageIcon className="w-10 h-10 text-indigo-300" />
+                  <p className="text-sm text-muted-foreground">이미지가 없습니다</p>
+                  <Button
+                    size="sm"
+                    onClick={() => generateImageMutation.mutate(item.id)}
+                    disabled={generateImageMutation.isPending}
+                    className="gap-1.5 bg-indigo-600 hover:bg-indigo-700 text-white"
+                  >
+                    {generateImageMutation.isPending
+                      ? <><Loader2 className="w-3.5 h-3.5 animate-spin" />생성 중...</>
+                      : <><Sparkles className="w-3.5 h-3.5" />이미지 생성하기</>
+                    }
+                  </Button>
                 </div>
               </div>
             )}
@@ -1251,6 +1292,12 @@ export default function YouTubeScripture() {
           open={detailOpen}
           onOpenChange={setDetailOpen}
           onDelete={(id) => { deleteMutation.mutate(id); queryClient.invalidateQueries({ queryKey: ["/api/scripture-contents"] }); }}
+          onImageGenerated={(id, imageUrls, imageBase64) => {
+            queryClient.invalidateQueries({ queryKey: ["/api/scripture-contents"] });
+            if (selectedItem && selectedItem.id === id) {
+              setSelectedItem({ ...selectedItem, imageUrls });
+            }
+          }}
         />
 
         {/* ── 자동화 탭 ── */}

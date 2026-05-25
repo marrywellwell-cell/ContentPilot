@@ -41,6 +41,7 @@ export interface IStorage {
   getScriptureContent(id: string): Promise<ScriptureContent | undefined>;
   listScriptureContents(userId?: string, channelName?: string): Promise<ScriptureContent[]>;
   listScriptureChannels(userId: string): Promise<{ channelName: string; count: number }[]>;
+  updateScriptureContentImages(id: string, imageUrls: string[]): Promise<ScriptureContent | undefined>;
   deleteScriptureContent(id: string): Promise<boolean>;
   
   // Scripture automation operations
@@ -411,6 +412,14 @@ export class MemStorage implements IStorage {
       map[name] = (map[name] || 0) + 1;
     }
     return Object.entries(map).map(([channelName, count]) => ({ channelName, count })).sort((a, b) => b.count - a.count);
+  }
+
+  async updateScriptureContentImages(id: string, imageUrls: string[]): Promise<ScriptureContent | undefined> {
+    const existing = this.scriptureContentsMap.get(id);
+    if (!existing) return undefined;
+    const updated = { ...existing, imageUrls };
+    this.scriptureContentsMap.set(id, updated);
+    return updated;
   }
 
   async deleteScriptureContent(id: string): Promise<boolean> {
@@ -944,6 +953,14 @@ export class PostgresStorage implements IStorage {
              GROUP BY channel_name ORDER BY count DESC`
     );
     return result.rows as { channelName: string; count: number }[];
+  }
+
+  async updateScriptureContentImages(id: string, imageUrls: string[]): Promise<ScriptureContent | undefined> {
+    const result = await this.db.update(scriptureContents)
+      .set({ imageUrls })
+      .where(eq(scriptureContents.id, id))
+      .returning();
+    return result[0];
   }
 
   async deleteScriptureContent(id: string): Promise<boolean> {
