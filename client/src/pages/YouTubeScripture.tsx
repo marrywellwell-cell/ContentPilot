@@ -652,17 +652,19 @@ function ContentDetailDialog({
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [localImageUrl, setLocalImageUrl] = useState<string | undefined>();
   const [localImageBase64, setLocalImageBase64] = useState<string | null>(null);
+  const [localSlideImages, setLocalSlideImages] = useState<string[]>([]);
   const [imageLoadError, setImageLoadError] = useState(false);
 
   const generateImageMutation = useMutation({
     mutationFn: async (id: string) => {
       const res = await apiRequest(`/api/scripture-contents/${id}/generate-image`, { method: "POST" }) as any;
-      return res as { imageUrls: string[]; imageBase64: string | null };
+      return res as { imageUrls: string[]; imageBase64: string | null; instagramSlideImages?: string[] };
     },
     onSuccess: (data) => {
       const displayUrl = data.imageBase64 || data.imageUrls?.[0] || "";
       setLocalImageUrl(displayUrl || undefined);
       setLocalImageBase64(data.imageBase64);
+      if (data.instagramSlideImages?.length) setLocalSlideImages(data.instagramSlideImages);
       toast({ title: "이미지 생성 완료!" });
       if (item) onImageGenerated?.(item.id, data.imageUrls, data.imageBase64);
     },
@@ -670,7 +672,7 @@ function ContentDetailDialog({
   });
 
   const handleOpenChange = (v: boolean) => {
-    if (!v) { setLocalImageUrl(undefined); setLocalImageBase64(null); setImageLoadError(false); }
+    if (!v) { setLocalImageUrl(undefined); setLocalImageBase64(null); setLocalSlideImages([]); setImageLoadError(false); }
     onOpenChange(v);
   };
 
@@ -806,8 +808,9 @@ function ContentDetailDialog({
 
             {/* 슬라이드 */}
             {slides.length > 0 && (() => {
-              // imageUrls[1..] = 슬라이드 썸네일 (신규 저장), 없으면 메인 이미지로 폴백
-              const slideImages = (item.imageUrls || []).slice(1);
+              // 재생성 후 localSlideImages 우선, 그 다음 DB 썸네일(imageUrls[1..])
+              const dbSlideImages = (item.imageUrls || []).slice(1);
+              const slideImages = localSlideImages.length > 0 ? localSlideImages : dbSlideImages;
               const hasSlideImages = slideImages.length > 0;
               return (
                 <div className="space-y-2">
@@ -816,23 +819,22 @@ function ContentDetailDialog({
                   </h3>
                   <div className="grid grid-cols-3 gap-2">
                     {slides.map((slide, i) => {
-                      const slideImg = hasSlideImages ? slideImages[i] : imageUrl;
+                      const slideImg = slideImages[i];
                       return (
                         <div
                           key={i}
-                          className="aspect-square rounded-lg overflow-hidden relative flex items-center justify-center p-2 cursor-pointer"
-                          style={slideImg ? {
-                            backgroundImage: `url(${slideImg})`,
-                            backgroundSize: "cover",
-                            backgroundPosition: "center",
-                          } : {}}
+                          className="aspect-square rounded-lg overflow-hidden relative cursor-pointer"
                           onClick={() => { if (slideImg) { const a = document.createElement("a"); a.href = slideImg; a.download = `slide-${i + 1}.jpg`; a.click(); } }}
                         >
-                          {slideImg
-                            ? <div className="absolute inset-0 bg-black/50" />
-                            : <div className="absolute inset-0 bg-gradient-to-br from-purple-600 to-blue-600" />
-                          }
-                          <p className="relative z-10 text-white text-[10px] font-bold text-center leading-tight drop-shadow">{slide}</p>
+                          {slideImg ? (
+                            // 캔버스로 생성된 이미지 직접 표시 — 오버레이 없음
+                            <img src={slideImg} alt={slide} className="w-full h-full object-cover hover:opacity-90 transition-opacity" />
+                          ) : (
+                            // 이미지 없을 때 파스텔 그라데이션 + 텍스트
+                            <div className="absolute inset-0 flex items-center justify-center p-2 bg-gradient-to-br from-purple-100 to-indigo-200">
+                              <p className="text-[10px] font-bold text-center leading-tight text-indigo-800">{slide}</p>
+                            </div>
+                          )}
                         </div>
                       );
                     })}

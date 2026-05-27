@@ -1308,18 +1308,19 @@ Solution: ${brandAnalysis.solution || "없음"}`;
       const content = await storage.getScriptureContent(req.params.id);
       if (!content) return res.status(404).json({ error: "콘텐츠를 찾을 수 없습니다." });
 
-      const { imageBase64, thumbnailBase64, imageUrl } = await generateVerseImage(
+      const slides = Array.isArray(content.instagramSlides) ? content.instagramSlides : [];
+      const { imageBase64, thumbnailBase64, imageUrl, slideImages, slideThumbUrls } = await generateVerseImage(
         content.bibleReference || "",
-        content.bibleVerse || ""
+        content.bibleVerse || "",
+        slides
       );
 
-      const newImageUrls = thumbnailBase64
-        ? [thumbnailBase64]
-        : imageUrl ? [imageUrl] : [];
+      const mainThumb = thumbnailBase64 ? [thumbnailBase64] : (imageUrl ? [imageUrl] : []);
+      const newImageUrls = [...mainThumb, ...slideThumbUrls];
 
       await storage.updateScriptureContentImages(content.id, newImageUrls);
 
-      res.json({ imageUrls: newImageUrls, imageBase64: imageBase64 || null });
+      res.json({ imageUrls: newImageUrls, imageBase64: imageBase64 || null, instagramSlideImages: slideImages });
     } catch (error: any) {
       console.error("[generate-image] 오류:", error);
       res.status(500).json({ error: error.message || "이미지 생성 실패" });

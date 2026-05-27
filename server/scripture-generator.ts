@@ -379,27 +379,36 @@ JSON: { "caption": "캡션 전문", "hashtags": ["#해시태그1",...(8-10개)] 
 
 export async function generateVerseImage(
   verseReference: string,
-  verseContent: string
-): Promise<{ imageBase64?: string; thumbnailBase64?: string; imageUrl: string }> {
+  verseContent: string,
+  instagramSlides: string[] = []
+): Promise<{ imageBase64?: string; thumbnailBase64?: string; imageUrl: string; slideImages: string[]; slideThumbUrls: string[] }> {
   const UNSPLASH_FALLBACK = "https://images.unsplash.com/photo-1499652848871-1527a310b13a?w=1080&h=1080&fit=crop";
   const imagePrompt = `Christian devotional background. Bright airy atmosphere, soft pastel tones, high-key lighting, open Bible on white linen table in natural daylight, or serene spring nature with blooming flowers and gentle morning light. Square format. Very bright, light, pastel colors, clean aesthetic, high quality, minimalist, no dark shadows.`;
 
   let imageUrl = UNSPLASH_FALLBACK;
   let imageBase64: string | undefined;
   let thumbnailBase64: string | undefined;
+  let slideImages: string[] = [];
+  let slideThumbUrls: string[] = [];
 
   const rawBase64 = await generateScriptureImageBase64(imagePrompt);
   if (rawBase64) {
     try {
-      const { addVerseOverlayToBase64, createSmallThumbnail } = await import("./scripture-canvas");
+      const { addVerseOverlayToBase64, createSmallThumbnail, createInstagramSlides, createSlideThumbnail } = await import("./scripture-canvas");
       imageBase64 = await addVerseOverlayToBase64(rawBase64, verseReference, verseContent);
       thumbnailBase64 = await createSmallThumbnail(imageBase64);
       imageUrl = "";
+
+      // 슬라이드가 있으면 함께 재생성
+      if (instagramSlides.length > 0) {
+        slideImages = await createInstagramSlides(rawBase64, instagramSlides, verseReference);
+        slideThumbUrls = (await Promise.all(slideImages.map(img => createSlideThumbnail(img).catch(() => "")))).filter(Boolean);
+      }
     } catch (err: any) {
       console.warn("[generateVerseImage] canvas 실패:", err.message?.slice(0, 80));
       imageBase64 = rawBase64;
     }
   }
 
-  return { imageBase64, thumbnailBase64, imageUrl };
+  return { imageBase64, thumbnailBase64, imageUrl, slideImages, slideThumbUrls };
 }
