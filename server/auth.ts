@@ -1,20 +1,43 @@
 import passport from "passport";
 import { Strategy as GoogleStrategy } from "passport-google-oauth20";
 import session from "express-session";
+import connectPg from "connect-pg-simple";
 import type { Express, RequestHandler } from "express";
 import { storage } from "./storage";
 
 export function getSession() {
   const sessionTtl = 7 * 24 * 60 * 60 * 1000; // 1 week
 
-  // 메모리 세션 사용 — DB 연결 부하 제거 (Render 무료 플랜 안정성 향상)
+  // DB 세션 저장소 사용 — 서버 재시작(배포/슬립 후 깨어남) 시에도 로그인 유지
+  if (process.env.DATABASE_URL) {
+    const pgStore = connectPg(session);
+    return session({
+      secret: process.env.SESSION_SECRET || "contentflow-dev-secret-change-in-production",
+      resave: false,
+      saveUninitialized: false,
+      store: new pgStore({
+        conString: process.env.DATABASE_URL,
+        createTableIfMissing: true, // sessions 테이블 자동 생성
+        ttl: sessionTtl / 1000,     // 초 단위
+        tableName: "sessions",
+      }),
+      cookie: {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        maxAge: sessionTtl,
+      },
+    });
+  }
+
+  // DB 없는 로컬 개발 환경 — 메모리 세션
   return session({
     secret: process.env.SESSION_SECRET || "contentflow-dev-secret-change-in-production",
     resave: false,
     saveUninitialized: false,
     cookie: {
       httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
+      secure: false,
       sameSite: "lax",
       maxAge: sessionTtl,
     },
