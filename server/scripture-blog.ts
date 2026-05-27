@@ -88,7 +88,7 @@ async function generateBlogImageBase64(prompt: string): Promise<string | null> {
   // 3차: Pollinations.ai (무료, API키 불필요)
   try {
     const shortPrompt = encodeURIComponent(
-      "open Bible soft golden morning light wooden table peaceful spiritual no text no people photorealistic"
+      "spring flowers meadow soft morning light pastel peaceful nature airy bright no text no people photorealistic"
     );
     const seed = Math.floor(Math.random() * 9999999);
     const polRes = await fetch(

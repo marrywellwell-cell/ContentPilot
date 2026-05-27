@@ -105,7 +105,7 @@ async function generateScriptureImageBase64(prompt: string): Promise<string | nu
   try {
     console.log("[scripture] Pollinations.ai 시도...");
     const shortPrompt = encodeURIComponent(
-      "open Bible bright white linen table natural daylight pastel flowers spring morning airy light no text no people photorealistic high key"
+      "spring cherry blossom flowers soft morning light pastel meadow peaceful nature airy bright no text no people photorealistic high key"
     );
     const seed = Math.floor(Math.random() * 9999999);
     const polUrl = `https://image.pollinations.ai/prompt/${shortPrompt}?width=1024&height=1024&nologo=true&seed=${seed}`;
@@ -151,39 +151,57 @@ async function fetchAllSlideBackgrounds(slides: string[]): Promise<(string | nul
 function slideTextToImagePrompt(slideText: string, slideIndex: number): string {
   const text = slideText.toLowerCase();
 
-  // 키워드 매핑: 한국어 키워드 → 영어 이미지 프롬프트
+  // 슬라이드 주제 → 자연/풍경/꽃 이미지 (성경책·교회 제외)
   const keywordMap: [string[], string][] = [
-    [["사랑", "love", "애정", "섬기"], "beautiful red roses blooming garden warm sunlight love"],
-    [["기도", "pray", "기원", "간구"], "hands folded in prayer warm candlelight soft glow peaceful"],
-    [["믿음", "faith", "신뢰", "확신"], "bright sunlight breaking through dark clouds mountain peak hope"],
-    [["평화", "peace", "평안", "안식", "쉼"], "calm serene lake reflection gentle mist sunrise peaceful"],
-    [["은혜", "grace", "축복", "감사", "blessing"], "golden light rays through forest trees divine blessing"],
-    [["말씀", "word", "성경", "scripture"], "open Bible golden light wooden table morning devotion"],
-    [["하나님", "god", "주님", "lord", "예수", "jesus"], "bright golden light heaven rays clouds divine presence"],
-    [["찬양", "praise", "worship", "경배"], "beautiful sunrise over ocean horizon worship celebration"],
-    [["겸손", "humble", "낮아짐"], "small delicate flower morning dew humble grace nature"],
-    [["소망", "hope", "기대", "미래"], "sunrise over mountain horizon new day hope bright"],
-    [["공동체", "community", "함께", "교회"], "warm gathering space cozy light community togetherness"],
-    [["치유", "heal", "회복", "restoration"], "fresh spring water flowing rocks sunlight healing nature"],
-    [["순종", "obey", "따름", "헌신"], "peaceful shepherd countryside rolling hills green obedience"],
-    [["영적", "spirit", "성령"], "light beams through stained glass church spiritual divine"],
+    [["사랑", "love", "애정", "섬기", "헌신"],
+      "beautiful pink cherry blossom flowers spring branches blue sky soft bokeh"],
+    [["기도", "pray", "기원", "간구", "주님께", "맡기"],
+      "peaceful misty mountain valley morning golden light serene meadow"],
+    [["믿음", "faith", "신뢰", "확신", "의지"],
+      "bright sunlight rays breaking through forest canopy trees green nature"],
+    [["평화", "peace", "평안", "안식", "쉼", "안에서"],
+      "calm serene lake reflection soft morning mist pastel sky"],
+    [["은혜", "grace", "축복", "감사", "blessing"],
+      "golden autumn maple leaves falling soft light bokeh warm"],
+    [["말씀", "word", "성경", "scripture"],
+      "beautiful sunrise over calm ocean horizon golden hour waves"],
+    [["하나님", "god", "주님", "lord", "예수", "jesus"],
+      "majestic snow mountain peaks above clouds golden sunrise sky"],
+    [["찬양", "praise", "worship", "경배"],
+      "colorful wildflower meadow sunshine vibrant tulips spring field"],
+    [["겸손", "humble", "낮아짐", "내려"],
+      "small delicate white flower morning dew drops macro soft bokeh"],
+    [["소망", "hope", "기대", "미래", "새로운", "비전"],
+      "rainbow over green valley after rain colorful sky bright"],
+    [["공동체", "community", "함께", "연합"],
+      "warm golden afternoon light through window cozy interior autumn"],
+    [["치유", "heal", "회복", "restoration"],
+      "clear waterfall flowing green forest sunlight mist fresh nature"],
+    [["순종", "obey", "따름", "돌보", "돌봄"],
+      "green rolling pastoral hills sheep countryside sunrise peaceful"],
+    [["영적", "spirit", "성령"],
+      "starry night sky milky way galaxy stars cosmos long exposure"],
+    [["새로운", "변화", "시작", "새출발"],
+      "fresh green sprout seedling morning dew soft sunlight new growth"],
+    [["염려", "걱정", "두려움"],
+      "calm butterfly on lavender flower soft pastel background bokeh"],
   ];
 
   for (const [keywords, prompt] of keywordMap) {
     if (keywords.some(k => text.includes(k))) {
-      return `${prompt} photorealistic bright vibrant beautiful no text no people high quality`;
+      return `${prompt} photorealistic bright airy high quality no text no people no faces`;
     }
   }
 
-  // 기본 프롬프트 (슬라이드 인덱스별 다양화)
+  // 슬라이드 순서별 기본 다양 이미지
   const defaults = [
-    "open Bible soft golden morning light wooden table peaceful bright",
-    "sunrise over calm ocean water golden hour vibrant spiritual",
-    "beautiful blooming flowers garden soft bokeh warm light bright",
-    "mountain valley sunrise misty morning peaceful nature bright",
-    "glowing candle warm light cozy spiritual peaceful soft",
+    "beautiful spring cherry blossom path pink flowers blue sky bright",
+    "golden wheat field sunset horizon warm light pastoral peaceful",
+    "colorful tulip flower garden vibrant spring sunshine close up",
+    "majestic mountain lake reflection sunrise misty morning serene",
+    "green bamboo forest morning light rays mist tranquil peaceful",
   ];
-  return `${defaults[slideIndex % defaults.length]} photorealistic no text no people high quality`;
+  return `${defaults[slideIndex % defaults.length]} photorealistic bright no text no people high quality`;
 }
 
 // ─── AI 콘텐츠 생성 ──────────────────────────────────────────────────────────
@@ -345,7 +363,7 @@ JSON: { "caption": "캡션 전문", "hashtags": ["#해시태그1",...(8-10개)] 
   } catch {}
 
   // ── Step 4: 이미지 생성 + Canvas 오버레이 (메모리 전용) ─────────────────
-  const imagePrompt = `Christian devotional background. Bright airy atmosphere, soft pastel tones, high-key lighting, open Bible on white linen table in natural daylight, or serene spring nature with blooming flowers and gentle morning light. Square format. Very bright, light, pastel colors, clean aesthetic, high quality, minimalist, no dark shadows.`;
+  const imagePrompt = `Beautiful nature scene for Christian devotional. Soft morning light through trees, spring cherry blossoms, peaceful meadow with wildflowers, or gentle sunrise over mountains. Bright airy pastel tones, high-key lighting, no Bible books, no church buildings, no people, no text. Square format. High quality photorealistic.`;
 
   const UNSPLASH_FALLBACK = "https://images.unsplash.com/photo-1499652848871-1527a310b13a?w=1080&h=1080&fit=crop";
   let imageUrl = UNSPLASH_FALLBACK;
@@ -407,7 +425,7 @@ export async function generateVerseImage(
   instagramSlides: string[] = []
 ): Promise<{ imageBase64?: string; thumbnailBase64?: string; imageUrl: string; slideImages: string[]; slideThumbUrls: string[] }> {
   const UNSPLASH_FALLBACK = "https://images.unsplash.com/photo-1499652848871-1527a310b13a?w=1080&h=1080&fit=crop";
-  const imagePrompt = `Christian devotional background. Bright airy atmosphere, soft pastel tones, high-key lighting, open Bible on white linen table in natural daylight, or serene spring nature with blooming flowers and gentle morning light. Square format. Very bright, light, pastel colors, clean aesthetic, high quality, minimalist, no dark shadows.`;
+  const imagePrompt = `Beautiful nature scene for Christian devotional. Soft morning light through trees, spring cherry blossoms, peaceful meadow with wildflowers, or gentle sunrise over mountains. Bright airy pastel tones, high-key lighting, no Bible books, no church buildings, no people, no text. Square format. High quality photorealistic.`;
 
   let imageUrl = UNSPLASH_FALLBACK;
   let imageBase64: string | undefined;
