@@ -123,6 +123,29 @@ async function generateScriptureImageBase64(prompt: string): Promise<string | nu
   return null;
 }
 
+// ─── 슬라이드별 배경 이미지 (Pollinations.ai 무료) ───────────────────────────
+
+async function fetchSlideBackground(slideText: string, slideIndex: number): Promise<string | null> {
+  try {
+    const base = slideTextToImagePrompt(slideText, slideIndex);
+    const prompt = encodeURIComponent(
+      `${base.slice(0, 180)} bright pastel light airy high key photography no text no people no faces`
+    );
+    const seed = Math.floor(Math.random() * 9_999_999) + slideIndex * 7919;
+    const url = `https://image.pollinations.ai/prompt/${prompt}?width=1080&height=1080&nologo=true&seed=${seed}`;
+    const res = await fetch(url, { signal: AbortSignal.timeout(20_000) });
+    if (res.ok) {
+      const buf = Buffer.from(await res.arrayBuffer());
+      return `data:image/jpeg;base64,${buf.toString("base64")}`;
+    }
+  } catch {}
+  return null;
+}
+
+async function fetchAllSlideBackgrounds(slides: string[]): Promise<(string | null)[]> {
+  return Promise.all(slides.map((text, i) => fetchSlideBackground(text, i)));
+}
+
 // ─── 슬라이드 텍스트 → 이미지 프롬프트 변환 ─────────────────────────────────
 
 function slideTextToImagePrompt(slideText: string, slideIndex: number): string {
@@ -340,9 +363,10 @@ JSON: { "caption": "캡션 전문", "hashtags": ["#해시태그1",...(8-10개)] 
       thumbnailBase64 = await createSmallThumbnail(imageBase64);
       imageUrl = ""; // base64 사용 시 imageUrl 불필요
 
-      // 슬라이드 이미지 생성 (동일 배경 + 슬라이드별 색상 테마로 차별화)
+      // 슬라이드 이미지 생성 — 슬라이드별 다른 배경 사진 + 파스텔 오버레이
       if (instagramSlides.length > 0) {
-        instagramSlideImages = await createInstagramSlides(rawBase64, instagramSlides, textContent.verseReference);
+        const slideBgs = await fetchAllSlideBackgrounds(instagramSlides);
+        instagramSlideImages = await createInstagramSlides(slideBgs, instagramSlides, textContent.verseReference);
         instagramSlideThumbUrls = await Promise.all(
           instagramSlideImages.map(img => createSlideThumbnail(img).catch(() => ""))
         );
@@ -399,9 +423,10 @@ export async function generateVerseImage(
       thumbnailBase64 = await createSmallThumbnail(imageBase64);
       imageUrl = "";
 
-      // 슬라이드가 있으면 함께 재생성
+      // 슬라이드가 있으면 함께 재생성 — 슬라이드별 다른 배경 사진
       if (instagramSlides.length > 0) {
-        slideImages = await createInstagramSlides(rawBase64, instagramSlides, verseReference);
+        const slideBgs = await fetchAllSlideBackgrounds(instagramSlides);
+        slideImages = await createInstagramSlides(slideBgs, instagramSlides, verseReference);
         slideThumbUrls = (await Promise.all(slideImages.map(img => createSlideThumbnail(img).catch(() => "")))).filter(Boolean);
       }
     } catch (err: any) {

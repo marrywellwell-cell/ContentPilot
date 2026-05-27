@@ -49,6 +49,13 @@ function base64ToBuffer(dataUrl: string): Buffer {
   return Buffer.from(b64, "base64");
 }
 
+function hexToRgb(hex: string): [number, number, number] {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return [r, g, b];
+}
+
 // ── 슬라이드 테마 ─────────────────────────────────────────────────────────────
 
 interface SlideTheme {
@@ -184,32 +191,66 @@ export async function addVerseOverlayToBase64(
   }
 }
 
-// ── 인스타그램 슬라이드 생성 (순수 캔버스 파스텔 — 배경 이미지 불사용) ────────
+// ── 인스타그램 슬라이드 생성 ─────────────────────────────────────────────────
+// backgrounds: 슬라이드별 배경 이미지(base64). 없으면 파스텔 그라데이션 폴백.
 
 export async function createInstagramSlides(
-  _imageBase64: string | string[],  // 더 이상 배경으로 사용 안 함
+  backgrounds: (string | null)[] | string | null,
   slides: string[],
   verseReference: string
 ): Promise<string[]> {
   if (!slides.length) return [];
 
+  // 배열 정규화
+  const bgArr: (string | null)[] = Array.isArray(backgrounds)
+    ? backgrounds
+    : Array(slides.length).fill(backgrounds ?? null);
+
   try {
     await ensureFonts();
-    const { createCanvas } = await import("canvas");
+    const { createCanvas, loadImage } = await import("canvas");
     const SIZE = 1080;
     const results: string[] = [];
 
     for (let i = 0; i < slides.length; i++) {
       const theme = getSlideTheme(slides[i], i);
+      const bgSrc = bgArr[i] ?? null;
       const canvas = createCanvas(SIZE, SIZE);
       const ctx = canvas.getContext("2d") as any;
 
-      // ① 파스텔 그라데이션 배경 (대각선)
-      const bgGrad = ctx.createLinearGradient(0, 0, SIZE * 0.7, SIZE);
-      bgGrad.addColorStop(0, theme.bg1);
-      bgGrad.addColorStop(1, theme.bg2);
-      ctx.fillStyle = bgGrad;
-      ctx.fillRect(0, 0, SIZE, SIZE);
+      // ① 배경: 실사 이미지(파스텔 처리) or 그라데이션
+      if (bgSrc) {
+        try {
+          const img = await loadImage(base64ToBuffer(bgSrc));
+          // 흰 배경 + 이미지 50% 투명도 → 어두운 사진도 밝고 파스텔하게
+          ctx.fillStyle = "#FFFFFF";
+          ctx.fillRect(0, 0, SIZE, SIZE);
+          ctx.globalAlpha = 0.50;
+          ctx.drawImage(img, 0, 0, SIZE, SIZE);
+          ctx.globalAlpha = 1.0;
+        } catch {
+          // 이미지 로드 실패 → 그라데이션 폴백
+          const bgGrad = ctx.createLinearGradient(0, 0, SIZE * 0.7, SIZE);
+          bgGrad.addColorStop(0, theme.bg1);
+          bgGrad.addColorStop(1, theme.bg2);
+          ctx.fillStyle = bgGrad;
+          ctx.fillRect(0, 0, SIZE, SIZE);
+        }
+      } else {
+        // 배경 이미지 없음 → 파스텔 그라데이션
+        const bgGrad = ctx.createLinearGradient(0, 0, SIZE * 0.7, SIZE);
+        bgGrad.addColorStop(0, theme.bg1);
+        bgGrad.addColorStop(1, theme.bg2);
+        ctx.fillStyle = bgGrad;
+        ctx.fillRect(0, 0, SIZE, SIZE);
+      }
+
+      // 테마 컬러 반투명 워시 (실사 이미지 위에 파스텔 느낌 강화)
+      if (bgSrc) {
+        const [r, g, b] = hexToRgb(theme.bg2);
+        ctx.fillStyle = `rgba(${r},${g},${b},0.30)`;
+        ctx.fillRect(0, 0, SIZE, SIZE);
+      }
 
       // ② 큰 장식 원 (우상단)
       const cg1 = ctx.createRadialGradient(SIZE * 0.88, SIZE * 0.12, 0, SIZE * 0.88, SIZE * 0.12, SIZE * 0.52);
