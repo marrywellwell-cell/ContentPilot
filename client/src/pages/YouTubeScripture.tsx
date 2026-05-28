@@ -64,6 +64,31 @@ interface BlogContent {
   images: string[];
 }
 
+// DB에 저장된 기존 HTML 콘텐츠도 순수 텍스트로 변환
+function htmlToPlainText(html: string): string {
+  if (!html) return html;
+  if (!/<[a-z][\s\S]*>/i.test(html)) return html;
+  return html
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/h[1-6]>/gi, "\n\n")
+    .replace(/<h[1-6][^>]*>/gi, "")
+    .replace(/<\/p>/gi, "\n\n")
+    .replace(/<p[^>]*>/gi, "")
+    .replace(/<li[^>]*>/gi, "\n")
+    .replace(/<\/li>/gi, "")
+    .replace(/<\/(ul|ol)>/gi, "\n")
+    .replace(/<(ul|ol)[^>]*>/gi, "")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 type ViewState = "input" | "loading" | "results";
 
 interface LoadingStep {
@@ -285,7 +310,7 @@ function BlogResultCard({ blog }: { blog: BlogContent }) {
   const { toast } = useToast();
 
   const copy = async () => {
-    await navigator.clipboard.writeText(blog.content);
+    await navigator.clipboard.writeText(htmlToPlainText(blog.content));
     setCopied(true);
     toast({ title: "복사 완료!" });
     setTimeout(() => setCopied(false), 2000);
@@ -332,7 +357,7 @@ function BlogResultCard({ blog }: { blog: BlogContent }) {
               size="sm"
               className="bg-orange-500 hover:bg-orange-600 text-white gap-1"
               onClick={async () => {
-                const txt = [blog.title, "", blog.content, "", blog.hashtags?.map(t => t.startsWith("#") ? t : `#${t}`).join(" ")].filter(Boolean).join("\n");
+                const txt = [blog.title, "", htmlToPlainText(blog.content), "", blog.hashtags?.map(t => t.startsWith("#") ? t : `#${t}`).join(" ")].filter(Boolean).join("\n");
                 await navigator.clipboard.writeText(txt);
                 window.open("https://inloglab.tistory.com/manage/newpost/", "_blank");
                 toast({ title: "복사 완료!", description: "티스토리 에디터에 붙여넣기 하세요." });
@@ -348,7 +373,7 @@ function BlogResultCard({ blog }: { blog: BlogContent }) {
       </CardHeader>
       <CardContent className="space-y-4">
         <div className={`text-sm leading-7 whitespace-pre-wrap break-words bg-white dark:bg-zinc-900 rounded-lg p-4 border select-text font-sans ${expanded ? "" : "max-h-48 overflow-hidden"}`}>
-          {blog.content}
+          {htmlToPlainText(blog.content)}
         </div>
         <Button variant="ghost" size="sm" onClick={() => setExpanded(!expanded)} className="w-full">
           {expanded ? <><ChevronUp className="w-4 h-4 mr-1" />접기</> : <><ChevronDown className="w-4 h-4 mr-1" />더 보기</>}
@@ -617,7 +642,7 @@ function SavedList({
                     className="h-7 px-2 bg-orange-500 hover:bg-orange-600 text-white text-xs"
                     onClick={async (e) => {
                       e.stopPropagation();
-                      const txt = [item.blogTitle, "", item.blogContent].filter(Boolean).join("\n");
+                      const txt = [item.blogTitle, "", htmlToPlainText(item.blogContent || "")].filter(Boolean).join("\n");
                       await navigator.clipboard.writeText(txt);
                       window.open("https://inloglab.tistory.com/manage/newpost/", "_blank");
                     }}
@@ -925,7 +950,7 @@ function ContentDetailDialog({
                         onClick={() => {
                           const txt = [
                             item.blogTitle, "",
-                            item.blogContent, "",
+                            htmlToPlainText(item.blogContent || ""), "",
                             (item.instagramHashtags || []).map(t => t.startsWith("#") ? t : `#${t}`).join(" "),
                           ].filter(Boolean).join("\n");
                           copy(txt, "blog");
@@ -938,7 +963,7 @@ function ContentDetailDialog({
                       <Button size="sm"
                         className="h-7 px-2 bg-green-600 hover:bg-green-700 text-white text-xs"
                         onClick={async () => {
-                          const txt = [item.blogTitle, "", item.blogContent].filter(Boolean).join("\n");
+                          const txt = [item.blogTitle, "", htmlToPlainText(item.blogContent || "")].filter(Boolean).join("\n");
                           await navigator.clipboard.writeText(txt);
                           window.open("https://blog.naver.com/my.blog?Redirect=Write", "_blank");
                         }}>
@@ -971,7 +996,7 @@ function ContentDetailDialog({
                   {/* 본문 — 줄바꿈 보이는 뷰어 + 복사 버튼 */}
                   <div className="relative">
                     <div className="w-full max-h-96 overflow-y-auto text-xs leading-7 p-4 rounded-lg border bg-white dark:bg-zinc-900 font-sans whitespace-pre-wrap break-words select-text">
-                      {item.blogContent}
+                      {htmlToPlainText(item.blogContent || "")}
                     </div>
                     <p className="text-[10px] text-muted-foreground mt-1">
                       드래그 선택 또는 위 "전체 복사" 버튼으로 복사하여 블로그에 바로 붙여넣기

@@ -17,6 +17,35 @@ function parseJsonSafe<T>(content: string | null | undefined, defaults: T): T {
   catch { return defaults; }
 }
 
+// HTML → 순수 텍스트 변환 (AI가 HTML을 생성했을 때 강제 정리)
+function htmlToPlainText(html: string): string {
+  if (!html) return html;
+  // HTML이 없으면 그대로
+  if (!/<[a-z][\s\S]*>/i.test(html)) return html;
+
+  return html
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/h[1-6]>/gi, "\n\n")
+    .replace(/<h[1-6][^>]*>/gi, "")
+    .replace(/<\/p>/gi, "\n\n")
+    .replace(/<p[^>]*>/gi, "")
+    .replace(/<li[^>]*>/gi, "\n")
+    .replace(/<\/li>/gi, "")
+    .replace(/<\/ul>/gi, "\n")
+    .replace(/<ul[^>]*>/gi, "")
+    .replace(/<\/ol>/gi, "\n")
+    .replace(/<ol[^>]*>/gi, "")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 export interface ScriptureBlogContent {
   title: string;
   content: string;
@@ -272,7 +301,9 @@ JSON:
     if (!Array.isArray(parsed.imageRecommendations)) parsed.imageRecommendations = [];
     if (!Array.isArray(parsed.internalLinkTopics)) parsed.internalLinkTopics = [];
     if (!Array.isArray(parsed.hashtags)) parsed.hashtags = [];
-    blogContent = parsed.content || "";
+    // AI가 HTML을 생성했을 경우 강제로 순수 텍스트로 변환
+    parsed.content = htmlToPlainText(parsed.content || "");
+    blogContent = parsed.content;
 
     // 블로그 이미지 3장 생성 (base64)
     const images = await generateBlogImages(verseReference, verseContent, coreMessage, blogContent);
