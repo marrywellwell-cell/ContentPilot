@@ -653,6 +653,7 @@ function ContentDetailDialog({
   const [localImageUrl, setLocalImageUrl] = useState<string | undefined>();
   const [localImageBase64, setLocalImageBase64] = useState<string | null>(null);
   const [localSlideImages, setLocalSlideImages] = useState<string[]>([]);
+  const [localBlogImages, setLocalBlogImages] = useState<string[]>([]);
   const [imageLoadError, setImageLoadError] = useState(false);
 
   const generateImageMutation = useMutation({
@@ -671,8 +672,29 @@ function ContentDetailDialog({
     onError: (e: Error) => toast({ title: "이미지 생성 실패", description: e.message, variant: "destructive" }),
   });
 
+  const generateBlogImagesMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("/api/youtube-scripture/blog", {
+        method: "POST",
+        body: JSON.stringify({
+          summary: item?.videoSummary ? [item.videoSummary] : [],
+          coreMessage: item?.videoSummary || "",
+          verseReference: item?.bibleReference || "",
+          verseContent: item?.bibleVerse || "",
+          mainKeyword: item?.bibleReference?.split(" ")[0] || "",
+        }),
+      }) as any;
+      return res;
+    },
+    onSuccess: (data: any) => {
+      if (data.images?.length) setLocalBlogImages(data.images);
+      toast({ title: "블로그 이미지 생성 완료!" });
+    },
+    onError: () => toast({ title: "이미지 생성 실패", variant: "destructive" }),
+  });
+
   const handleOpenChange = (v: boolean) => {
-    if (!v) { setLocalImageUrl(undefined); setLocalImageBase64(null); setLocalSlideImages([]); setImageLoadError(false); }
+    if (!v) { setLocalImageUrl(undefined); setLocalImageBase64(null); setLocalSlideImages([]); setLocalBlogImages([]); setImageLoadError(false); }
     onOpenChange(v);
   };
 
@@ -891,30 +913,104 @@ function ContentDetailDialog({
             {item.blogContent && (
               <>
                 <Separator />
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
+                <div className="space-y-3">
+                  {/* 헤더 + 빠른 발행 버튼 */}
+                  <div className="flex items-center justify-between flex-wrap gap-1">
                     <h3 className="text-sm font-semibold flex items-center gap-1.5">
                       <FileText className="w-4 h-4 text-blue-500" />블로그 내용
                     </h3>
-                    <div className="flex gap-1">
-                      <Button
-                        size="sm"
+                    <div className="flex gap-1 flex-wrap">
+                      <Button size="sm" variant="outline" className="h-7 px-2 text-xs gap-1"
+                        onClick={() => {
+                          const txt = [
+                            item.blogTitle, "",
+                            item.blogContent, "",
+                            (item.instagramHashtags || []).map(t => t.startsWith("#") ? t : `#${t}`).join(" "),
+                          ].filter(Boolean).join("\n");
+                          copy(txt, "blog");
+                        }}>
+                        {copiedField === "blog"
+                          ? <Check className="w-3 h-3 text-green-500" />
+                          : <Copy className="w-3 h-3" />}
+                        전체 복사
+                      </Button>
+                      <Button size="sm"
+                        className="h-7 px-2 bg-green-600 hover:bg-green-700 text-white text-xs"
+                        onClick={async () => {
+                          const txt = [item.blogTitle, "", item.blogContent].filter(Boolean).join("\n");
+                          await navigator.clipboard.writeText(txt);
+                          window.open("https://blog.naver.com/my.blog?Redirect=Write", "_blank");
+                        }}>
+                        N 네이버
+                      </Button>
+                      <Button size="sm"
                         className="h-7 px-2 bg-orange-500 hover:bg-orange-600 text-white text-xs"
                         onClick={async () => {
                           await navigator.clipboard.writeText(item.blogContent || "");
                           window.open("https://inloglab.tistory.com/manage/newpost/", "_blank");
-                        }}
-                      >
-                        <span className="font-bold mr-1">T</span>티스토리
-                      </Button>
-                      <Button size="sm" variant="ghost" className="h-7 px-2"
-                        onClick={() => copy(item.blogContent!, "blog")}>
-                        {copiedField === "blog" ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
+                        }}>
+                        T 티스토리
                       </Button>
                     </div>
                   </div>
-                  {item.blogTitle && <p className="font-medium text-sm">{item.blogTitle}</p>}
-                  <p className="text-xs text-muted-foreground leading-relaxed line-clamp-6 whitespace-pre-wrap">{item.blogContent}</p>
+
+                  {/* 블로그 제목 */}
+                  {item.blogTitle && (
+                    <div className="flex items-center gap-2">
+                      <div className="flex-1 bg-blue-50 dark:bg-blue-950/30 rounded-lg px-3 py-2">
+                        <p className="font-semibold text-sm">{item.blogTitle}</p>
+                      </div>
+                      <Button size="sm" variant="ghost" className="h-8 px-2 shrink-0"
+                        onClick={() => copy(item.blogTitle!, "blogtitle")} title="제목 복사">
+                        {copiedField === "blogtitle" ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
+                      </Button>
+                    </div>
+                  )}
+
+                  {/* 본문 — 클릭하면 전체 선택, 직접 복사 가능 */}
+                  <div className="relative">
+                    <textarea
+                      readOnly
+                      value={item.blogContent}
+                      className="w-full h-60 text-xs leading-relaxed p-3 rounded-lg border bg-muted resize-none focus:outline-none focus:ring-2 focus:ring-blue-300 font-sans"
+                      onClick={(e) => (e.target as HTMLTextAreaElement).select()}
+                    />
+                    <p className="text-[10px] text-muted-foreground mt-1">
+                      텍스트 클릭 → 전체 선택 → Ctrl+C 로 복사하여 블로그에 바로 붙여넣기
+                    </p>
+                  </div>
+
+                  {/* 블로그 이미지 섹션 */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <p className="text-xs font-medium text-muted-foreground">블로그 이미지 (3장)</p>
+                      <Button size="sm" variant="outline" className="h-7 px-2 text-xs gap-1"
+                        onClick={() => generateBlogImagesMutation.mutate()}
+                        disabled={generateBlogImagesMutation.isPending}>
+                        {generateBlogImagesMutation.isPending
+                          ? <><Loader2 className="w-3 h-3 animate-spin" />생성 중...</>
+                          : <><Sparkles className="w-3 h-3" />이미지 생성</>}
+                      </Button>
+                    </div>
+
+                    {localBlogImages.length > 0 ? (
+                      <div className="grid grid-cols-3 gap-2">
+                        {localBlogImages.map((img, i) => (
+                          <div key={i} className="aspect-square rounded-lg overflow-hidden cursor-pointer relative group"
+                            onClick={() => { const a = document.createElement("a"); a.href = img; a.download = `blog-image-${i + 1}.png`; a.click(); }}>
+                            <img src={img} alt={`블로그 이미지 ${i + 1}`} className="w-full h-full object-cover" />
+                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                              <Download className="w-5 h-5 text-white" />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-center py-4 border border-dashed rounded-lg text-xs text-muted-foreground">
+                        이미지 생성 버튼을 누르면 말씀 컨셉 이미지 3장을 생성합니다
+                      </div>
+                    )}
+                  </div>
                 </div>
               </>
             )}
