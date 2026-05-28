@@ -16,7 +16,6 @@ import YouTubeUploadDialog from "@/components/YouTubeUploadDialog";
 import { useToast } from "@/hooks/use-toast";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { stripBase64Images } from "@/lib/downloadImage";
 import {
   Loader2, Youtube, BookOpen, Download, Copy, Check,
   Sparkles, Trash2, FileText, ChevronDown, ChevronUp,
@@ -333,9 +332,10 @@ function BlogResultCard({ blog }: { blog: BlogContent }) {
               size="sm"
               className="bg-orange-500 hover:bg-orange-600 text-white gap-1"
               onClick={async () => {
-                await navigator.clipboard.writeText(stripBase64Images(blog.html || blog.content));
+                const txt = [blog.title, "", blog.content, "", blog.hashtags?.map(t => t.startsWith("#") ? t : `#${t}`).join(" ")].filter(Boolean).join("\n");
+                await navigator.clipboard.writeText(txt);
                 window.open("https://inloglab.tistory.com/manage/newpost/", "_blank");
-                toast({ title: "HTML 복사!", description: "에디터에서 HTML 모드로 전환 후 붙여넣기 하세요." });
+                toast({ title: "복사 완료!", description: "티스토리 에디터에 붙여넣기 하세요." });
               }}
             >
               <span className="font-bold">T</span> 티스토리
@@ -347,9 +347,9 @@ function BlogResultCard({ blog }: { blog: BlogContent }) {
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
-        <p className={`text-sm leading-relaxed whitespace-pre-wrap ${expanded ? "" : "line-clamp-5"}`}>
+        <div className={`text-sm leading-7 whitespace-pre-wrap break-words bg-white dark:bg-zinc-900 rounded-lg p-4 border select-text font-sans ${expanded ? "" : "max-h-48 overflow-hidden"}`}>
           {blog.content}
-        </p>
+        </div>
         <Button variant="ghost" size="sm" onClick={() => setExpanded(!expanded)} className="w-full">
           {expanded ? <><ChevronUp className="w-4 h-4 mr-1" />접기</> : <><ChevronDown className="w-4 h-4 mr-1" />더 보기</>}
         </Button>
@@ -617,7 +617,8 @@ function SavedList({
                     className="h-7 px-2 bg-orange-500 hover:bg-orange-600 text-white text-xs"
                     onClick={async (e) => {
                       e.stopPropagation();
-                      await navigator.clipboard.writeText(stripBase64Images(item.blogContent || ""));
+                      const txt = [item.blogTitle, "", item.blogContent].filter(Boolean).join("\n");
+                      await navigator.clipboard.writeText(txt);
                       window.open("https://inloglab.tistory.com/manage/newpost/", "_blank");
                     }}
                   >
@@ -967,16 +968,13 @@ function ContentDetailDialog({
                     </div>
                   )}
 
-                  {/* 본문 — 클릭하면 전체 선택, 직접 복사 가능 */}
+                  {/* 본문 — 줄바꿈 보이는 뷰어 + 복사 버튼 */}
                   <div className="relative">
-                    <textarea
-                      readOnly
-                      value={item.blogContent}
-                      className="w-full h-60 text-xs leading-relaxed p-3 rounded-lg border bg-muted resize-none focus:outline-none focus:ring-2 focus:ring-blue-300 font-sans"
-                      onClick={(e) => (e.target as HTMLTextAreaElement).select()}
-                    />
+                    <div className="w-full max-h-96 overflow-y-auto text-xs leading-7 p-4 rounded-lg border bg-white dark:bg-zinc-900 font-sans whitespace-pre-wrap break-words select-text">
+                      {item.blogContent}
+                    </div>
                     <p className="text-[10px] text-muted-foreground mt-1">
-                      텍스트 클릭 → 전체 선택 → Ctrl+C 로 복사하여 블로그에 바로 붙여넣기
+                      드래그 선택 또는 위 "전체 복사" 버튼으로 복사하여 블로그에 바로 붙여넣기
                     </p>
                   </div>
 
