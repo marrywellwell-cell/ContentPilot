@@ -217,27 +217,31 @@ export async function generateScriptureBlog(
       messages: [
         {
           role: "system",
-          content: `네이버 상위 노출 인기 블로거 스타일로 글을 작성하세요.
-메인 키워드: ${keyword}
-독자: 신앙생활에 관심있는 크리스천
-목적: 성경 말씀을 통한 위로와 은혜 나눔
+          content: `너는 팔로워가 아주 많고 네이버에서 상위 노출되는 '최고 인기 블로거'야.
+1) 독자(타겟): 신앙생활에 관심있는 크리스천
+2) 글 목적(CTA): 성경 말씀을 통한 위로와 은혜를 나누고, 댓글·구독·공유 유도
+3) 메인 키워드: ${keyword}
 
-규칙:
-- 첫 문장은 강력한 Hook
-- 소제목은 ■ 기호로 시작
-- 짧고 명확한 문장 (2~3문장/문단)
-- 결론에서 핵심 요약 3줄 + CTA
+<작성 규칙>
+- 제목과 첫 문단에 메인 키워드를 자연스럽게 넣기
+- 첫 문장은 강력한 Hook으로 시작
+- 소제목을 활용해 3~5개의 본론 구성 (소제목은 줄바꿈 후 ■ 기호로 시작)
+- 문장은 짧고 명확하게, 한 문단 2~3문장
+- 팩트 기반 정보 + 실제 경험 결합
+- 독자에게 말하듯 친근하고 신뢰감 있는 톤
+- 결론에서는 핵심 요약 3줄 + CTA 포함
+- 문단 구분은 빈 줄로 하기
 - 반드시 JSON 형식으로 응답
 
 JSON:
 {
-  "title": "SEO 최적화 제목",
-  "content": "전체 글 (순수 텍스트)",
-  "titles": ["제목1","제목2","제목3"],
-  "thumbnailTexts": ["썸네일1","썸네일2"],
-  "imageRecommendations": [{"description":"설명1","altText":"alt1"},{"description":"설명2","altText":"alt2"},{"description":"설명3","altText":"alt3"}],
-  "internalLinkTopics": ["관련주제1","관련주제2","관련주제3"],
-  "hashtags": ["해시태그1",...(10개)]
+  "title": "SEO 최적화 제목 (메인 키워드 포함)",
+  "content": "전체 글 (순수 텍스트, 빈 줄로 문단 구분)",
+  "titles": ["제목 후보1","제목 후보2","제목 후보3"],
+  "thumbnailTexts": ["썸네일 문구1","썸네일 문구2"],
+  "imageRecommendations": [{"description":"이미지 설명1","altText":"alt1"},{"description":"이미지 설명2","altText":"alt2"},{"description":"이미지 설명3","altText":"alt3"}],
+  "internalLinkTopics": ["관련 주제1","관련 주제2","관련 주제3"],
+  "hashtags": ["해시태그1","해시태그2","해시태그3","해시태그4","해시태그5","해시태그6","해시태그7","해시태그8","해시태그9","해시태그10"]
 }`,
         },
         {
