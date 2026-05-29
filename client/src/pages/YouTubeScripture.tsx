@@ -700,21 +700,19 @@ function ContentDetailDialog({
 
   const generateBlogImagesMutation = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest("/api/youtube-scripture/blog", {
+      const res = await apiRequest("/api/youtube-scripture/blog-images", {
         method: "POST",
         body: JSON.stringify({
-          summary: item?.videoSummary ? [item.videoSummary] : [],
-          coreMessage: item?.videoSummary || "",
           verseReference: item?.bibleReference || "",
           verseContent: item?.bibleVerse || "",
-          mainKeyword: item?.bibleReference?.split(" ")[0] || "",
+          coreMessage: item?.videoSummary || "",
         }),
       }) as any;
       return res;
     },
     onSuccess: (data: any) => {
       if (data.images?.length) setLocalBlogImages(data.images);
-      toast({ title: "블로그 이미지 생성 완료!" });
+      toast({ title: `블로그 이미지 ${data.images?.length || 0}장 생성 완료!` });
     },
     onError: () => toast({ title: "이미지 생성 실패", variant: "destructive" }),
   });

@@ -194,6 +194,39 @@ async function generateBlogImages(
   return images;
 }
 
+// ── 이미지만 전용 생성 (텍스트 생성 없음) ────────────────────────────────────
+
+export async function generateBlogImagesOnly(
+  mainRef: string,
+  mainContent: string,
+  coreMessage: string
+): Promise<string[]> {
+  const { addVerseOverlayToBase64 } = await import("./scripture-canvas");
+
+  const backgrounds = [
+    "soft golden morning light through window, warm serene atmosphere, calming pastel colors",
+    "gentle sunrise over calm water, peaceful nature landscape, warm golden hour lighting",
+    "beautiful flower arrangement with soft bokeh, morning dew, warm natural light",
+  ];
+
+  // 3장 병렬 생성
+  const tasks = backgrounds.map((bg, i) => {
+    const prompt = `Christian devotional background. ${bg}. Minimalist, square 1:1, no text, no people.`;
+    const seed = Math.floor(Math.random() * 9999999);
+    return generateBlogImageBase64(prompt, seed).then(async (rawBase64) => {
+      if (!rawBase64) return null;
+      try {
+        return await addVerseOverlayToBase64(rawBase64, mainRef, mainContent);
+      } catch {
+        return rawBase64;
+      }
+    });
+  });
+
+  const results = await Promise.all(tasks);
+  return results.filter((r): r is string => r !== null);
+}
+
 // ── 메인 블로그 콘텐츠 생성 ──────────────────────────────────────────────────
 
 export async function generateScriptureBlog(

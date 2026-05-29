@@ -1349,6 +1349,23 @@ Solution: ${brandAnalysis.solution || "없음"}`;
     }
   });
 
+  // 블로그 이미지만 전용 생성 (텍스트 생성 없이 이미지 3장만)
+  app.post("/api/youtube-scripture/blog-images", isAuthenticated, async (req, res) => {
+    try {
+      const { verseReference, verseContent, coreMessage } = req.body;
+      if (!verseReference || !verseContent) {
+        return res.status(400).json({ error: "verseReference와 verseContent가 필요합니다." });
+      }
+
+      const { generateBlogImagesOnly } = await import("./scripture-blog");
+      const images = await generateBlogImagesOnly(verseReference, verseContent, coreMessage || "");
+      res.json({ images });
+    } catch (error: any) {
+      console.error("[blog-images] 생성 오류:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // Scripture Content CRUD endpoints
   app.post("/api/scripture-contents", isAuthenticated, async (req: any, res) => {
     try {
