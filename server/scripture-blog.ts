@@ -59,76 +59,56 @@ export interface ScriptureBlogContent {
 
 // ── 이미지 생성 (base64 반환, 파일 저장 없음) ─────────────────────────────────
 
-async function generateBlogImageBase64(prompt: string): Promise<string | null> {
-  const fullPrompt = (
-    "STRICT RULE: absolutely NO people, NO humans, NO faces. " +
-    prompt.slice(0, 700) +
-    " Photorealistic, high quality, no text in image."
-  ).trim();
+async function generateBlogImageBase64(prompt: string, seed?: number): Promise<string | null> {
+  const cleanPrompt = prompt.replace(/[^\w\s,.\-]/g, " ").trim();
 
-  // 1차: OpenAI (gpt-image-1 → dall-e-3 → dall-e-2) — 모두 b64_json으로 직접 수신
-  if (process.env.OPENAI_API_KEY) {
-    const openaiModels = ["gpt-image-1", "dall-e-3", "dall-e-2"] as const;
-    for (const model of openaiModels) {
-      try {
-        const openai = getOpenAI();
-        const params: any = {
-          model,
-          prompt: fullPrompt.slice(0, 1000),
-          n: 1,
-          size: "1024x1024",
-          response_format: "b64_json",
-        };
-        const res = await openai.images.generate(params);
-        const b64 = res.data?.[0]?.b64_json;
-        if (b64) return `data:image/png;base64,${b64}`;
-        const url = res.data?.[0]?.url;
-        if (url) {
-          const imgRes = await fetch(url);
-          if (imgRes.ok) return `data:image/png;base64,${Buffer.from(await imgRes.arrayBuffer()).toString("base64")}`;
-        }
-      } catch (e: any) { console.warn(`[scripture-blog] OpenAI ${model} 실패:`, e.message?.slice(0, 80)); }
-    }
-  }
-
-  // 2차: Gemini
-  if (process.env.GEMINI_API_KEY) {
-    const models = ["gemini-2.0-flash-preview-image-generation", "gemini-2.0-flash-exp-image-generation"];
-    for (const model of models) {
-      try {
-        const { GoogleGenAI, Modality } = await import("@google/genai");
-        const gemini = new GoogleGenAI({
-          apiKey: process.env.GEMINI_API_KEY,
-          httpOptions: { apiVersion: "v1alpha" },
-        });
-        const res = await gemini.models.generateContent({
-          model,
-          contents: [{ role: "user", parts: [{ text: fullPrompt }] }],
-          config: { responseModalities: [Modality.TEXT, Modality.IMAGE] },
-        });
-        const part = res.candidates?.[0]?.content?.parts?.find((p: any) => p.inlineData);
-        if (part?.inlineData?.data) {
-          return `data:${part.inlineData.mimeType || "image/png"};base64,${part.inlineData.data}`;
-        }
-      } catch (e: any) { console.warn(`[scripture-blog] Gemini ${model} 실패:`, e.message?.slice(0, 80)); }
-    }
-  }
-
-  // 3차: Pollinations.ai (무료, API키 불필요)
+  // 1차: Pollinations.ai — 무료, 빠름, API키 불필요, 프롬프트별로 다른 이미지
   try {
-    const shortPrompt = encodeURIComponent(
-      "spring flowers meadow soft morning light pastel peaceful nature airy bright no text no people photorealistic"
+    const polPrompt = encodeURIComponent(
+      `${cleanPrompt.slice(0, 400)} no people no faces no text photorealistic pastel`
     );
-    const seed = Math.floor(Math.random() * 9999999);
+    const s = seed ?? Math.floor(Math.random() * 9999999);
     const polRes = await fetch(
-      `https://image.pollinations.ai/prompt/${shortPrompt}?width=1024&height=1024&nologo=true&seed=${seed}`,
-      { signal: AbortSignal.timeout(45000) }
+      `https://image.pollinations.ai/prompt/${polPrompt}?width=1024&height=1024&nologo=true&seed=${s}`,
+      { signal: AbortSignal.timeout(35000) }
     );
     if (polRes.ok) {
       const buf = Buffer.from(await polRes.arrayBuffer());
       return `data:image/jpeg;base64,${buf.toString("base64")}`;
     }
   } catch (e: any) { console.warn(`[scripture-blog] Pollinations 실패:`, e.message?.slice(0, 80)); }
+
+  // 2차: OpenAI dall-e-3 (rate limit 주의 — 1번만 시도)
+  if (process.env.OPENAI_API_KEY) {
+    try {
+      const openai = getOpenAI();
+      const fullPrompt = `STRICT RULE: NO people, NO humans, NO faces. ${cleanPrompt.slice(0, 800)} Photorealistic, high quality, no text.`;
+      const res = await openai.images.generate({
+        model: "dall-e-3",
+        prompt: fullPrompt.slice(0, 1000),
+        n: 1,
+        size: "1024x1024",
+        response_format: "b64_json",
+      } as any);
+      const b64 = res.data?.[0]?.b64_json;
+      if (b64) return `data:image/png;base64,${b64}`;
+    } catch (e: any) { console.warn(`[scripture-blog] OpenAI dall-e-3 실패:`, e.message?.slice(0, 80)); }
+  }
+
+  // 3차: Gemini
+  if (process.env.GEMINI_API_KEY) {
+    try {
+      const { GoogleGenAI, Modality } = await import("@google/genai");
+      const gemini = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY, httpOptions: { apiVersion: "v1alpha" } });
+      const res = await gemini.models.generateContent({
+        model: "gemini-2.0-flash-preview-image-generation",
+        contents: [{ role: "user", parts: [{ text: cleanPrompt }] }],
+        config: { responseModalities: [Modality.TEXT, Modality.IMAGE] },
+      });
+      const part = res.candidates?.[0]?.content?.parts?.find((p: any) => p.inlineData);
+      if (part?.inlineData?.data) return `data:${part.inlineData.mimeType || "image/png"};base64,${part.inlineData.data}`;
+    } catch (e: any) { console.warn(`[scripture-blog] Gemini 실패:`, e.message?.slice(0, 80)); }
+  }
 
   return null;
 }
@@ -192,24 +172,24 @@ async function generateBlogImages(
   ];
 
   const { addVerseOverlayToBase64 } = await import("./scripture-canvas");
-  const images: string[] = [];
 
-  for (let i = 0; i < 3; i++) {
-    const verse = allVerses[i];
-    const prompt = `Christian devotional image. Background: ${backgrounds[i]}. Minimalist design, square 1:1, no text in image.`;
-
-    const rawBase64 = await generateBlogImageBase64(prompt);
-    if (rawBase64) {
+  // 3장 병렬 생성 — 각각 다른 프롬프트와 seed 사용
+  const tasks = backgrounds.map((bg, i) => {
+    const prompt = `Christian devotional background. ${bg}. Minimalist, square 1:1, no text, no people.`;
+    const seed = Math.floor(Math.random() * 9999999);
+    return generateBlogImageBase64(prompt, seed).then(async (rawBase64) => {
+      if (!rawBase64) return null;
+      const verse = allVerses[i];
       try {
-        const withOverlay = await addVerseOverlayToBase64(rawBase64, verse.reference, verse.content);
-        images.push(withOverlay);
+        return await addVerseOverlayToBase64(rawBase64, verse.reference, verse.content);
       } catch {
-        images.push(rawBase64);
+        return rawBase64;
       }
-    }
+    });
+  });
 
-    if (i < 2) await new Promise((r) => setTimeout(r, 1500));
-  }
+  const results = await Promise.all(tasks);
+  const images = results.filter((r): r is string => r !== null);
 
   return images;
 }
