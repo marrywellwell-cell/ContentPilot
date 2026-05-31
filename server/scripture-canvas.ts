@@ -376,32 +376,43 @@ export async function addQuoteOverlayToBase64(
     const image = await loadImage(base64ToBuffer(imageBase64));
     ctx.drawImage(image, 0, 0, W, H);
 
-    // ── 전체 어두운 베일 (살짝) ──
-    ctx.fillStyle = "rgba(10,10,20,0.22)";
+    // ── 전체 어두운 베일 ──
+    ctx.fillStyle = "rgba(10,10,20,0.25)";
     ctx.fillRect(0, 0, W, H);
 
-    // ── 하단 그라데이션 (깊고 고급스러운 검정) ──
-    const gradH = H * 0.62;
+    // ── 하단 그라데이션 ──
+    const gradH = H * 0.65;
     const grad = ctx.createLinearGradient(0, H - gradH, 0, H);
     grad.addColorStop(0, "rgba(0,0,0,0)");
-    grad.addColorStop(0.35, "rgba(5,5,15,0.5)");
-    grad.addColorStop(0.7, "rgba(5,5,15,0.78)");
-    grad.addColorStop(1, "rgba(5,5,15,0.92)");
+    grad.addColorStop(0.30, "rgba(5,5,15,0.45)");
+    grad.addColorStop(0.65, "rgba(5,5,15,0.75)");
+    grad.addColorStop(1, "rgba(5,5,15,0.90)");
     ctx.fillStyle = grad;
     ctx.fillRect(0, H - gradH, W, gradH);
 
-    // ── 폰트 / 텍스트 설정 ──
-    const fontFamily = fontsRegistered ? '"NotoSansKR", sans-serif' : "sans-serif";
-    const inputLines = quote.split("\n");
-    const maxLineLen = Math.max(...inputLines.map(l => l.length), 1);
-    const fontSize = Math.min(76, Math.max(46, Math.floor(W * 0.75 / maxLineLen)));
-    const lineHeight = fontSize * 1.72;
-    const maxWidth = W * 0.78;
+    // ── **bold** 마커 제거 + 실제 줄 분리 ──
+    const cleanQuote = quote
+      .replace(/\*\*(.*?)\*\*/g, "$1")  // **text** → text
+      .replace(/\*(.*?)\*/g, "$1")      // *text* → text
+      .trim();
 
-    // 자동 줄바꿈
+    const fontFamily = fontsRegistered ? '"NotoSansKR", sans-serif' : "sans-serif";
+
+    // 줄 목록: 명시적 \n 우선, 빈 줄 제거
+    const rawLines = cleanQuote.split("\n").filter(l => l.trim().length > 0);
+
+    // 줄이 1개뿐이면 fullText 첫 3줄로 보완 시도
+    const inputLines = rawLines.length >= 2 ? rawLines : rawLines;
+
+    // 폰트 크기: 가장 긴 줄 기준, 최대 60px
+    const maxLineLen = Math.max(...inputLines.map(l => l.length), 1);
+    const fontSize = Math.min(60, Math.max(40, Math.floor(W * 0.65 / maxLineLen)));
+    const lineHeight = fontSize * 1.80;
+    const maxWidth = W * 0.80;
+
+    // 각 줄 자동 줄바꿈
     const allLines: string[] = [];
     for (const line of inputLines) {
-      if (!line.trim()) { allLines.push(""); continue; }
       ctx.font = `bold ${fontSize}px ${fontFamily}`;
       if (ctx.measureText(line).width <= maxWidth) {
         allLines.push(line);
@@ -409,16 +420,20 @@ export async function addQuoteOverlayToBase64(
         let cur = "";
         for (const ch of [...line]) {
           const test = cur + ch;
-          if (ctx.measureText(test).width > maxWidth && cur) { allLines.push(cur); cur = ch; }
-          else { cur = test; }
+          if (ctx.measureText(test).width > maxWidth && cur) {
+            allLines.push(cur); cur = ch;
+          } else { cur = test; }
         }
         if (cur) allLines.push(cur);
       }
     }
 
+    // 텍스트 블록을 이미지 하단 25% 영역에 배치 (잘리지 않도록)
     const totalTextH = allLines.length * lineHeight;
-    const blockCenterY = H * 0.80;
-    const startY = blockCenterY - totalTextH / 2 + lineHeight / 2;
+    const maxStartY = H - 80 - totalTextH;   // 하단 여백 80
+    const idealCenterY = H * 0.78;
+    const blockCenterY = Math.min(idealCenterY, maxStartY + totalTextH / 2);
+    const startY = Math.max(H * 0.55, blockCenterY - totalTextH / 2 + lineHeight / 2);
 
     // ── 황금 장식선 (위) ──
     const decoY = startY - lineHeight * 1.1;
