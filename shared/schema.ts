@@ -366,3 +366,27 @@ export const insertPlatformConnectionSchema = createInsertSchema(platformConnect
 
 export type PlatformConnection = typeof platformConnections.$inferSelect;
 export type InsertPlatformConnection = z.infer<typeof insertPlatformConnectionSchema>;
+
+// ── 월간 희망 콘텐츠 ─────────────────────────────────────────────────────────
+export const monthlyContents = pgTable("monthly_contents", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").references(() => users.id).notNull(),
+  month: varchar("month", { length: 7 }).notNull(), // "2025-06"
+  quote: text("quote").notNull(),
+  caption: text("caption").notNull(),
+  hashtags: text("hashtags").array().notNull().default(sql`'{}'::text[]`),
+  imageUrl: text("image_url"),
+  imageBase64: text("image_base64"),
+  status: varchar("status", { length: 20 }).notNull().default("draft"), // draft | published
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertMonthlyContentSchema = createInsertSchema(monthlyContents).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type MonthlyContent = typeof monthlyContents.$inferSelect;
+export type InsertMonthlyContent = z.infer<typeof insertMonthlyContentSchema>;

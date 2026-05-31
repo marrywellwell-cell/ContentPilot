@@ -17,6 +17,7 @@ import Admin from "@/pages/Admin";
 import BrandAnalysis from "@/pages/BrandAnalysis";
 import MonthlyPlan from "@/pages/MonthlyPlan";
 import YouTubeScripture from "@/pages/YouTubeScripture";
+import MonthlyHopeContent from "@/pages/MonthlyHopeContent";
 import InventionIdea from "@/pages/InventionIdea";
 import ContentList from "@/pages/ContentList";
 import ApiKeys from "@/pages/ApiKeys";
@@ -34,6 +35,7 @@ function Router() {
       <Route path="/brand-analysis" component={BrandAnalysis} />
       <Route path="/monthly-plan" component={MonthlyPlan} />
       <Route path="/youtube-scripture" component={YouTubeScripture} />
+      <Route path="/monthly-hope" component={MonthlyHopeContent} />
       <Route path="/invention-idea" component={InventionIdea} />
       <Route path="/content-list" component={ContentList} />
       <Route path="/edit/:id" component={EditContent} />

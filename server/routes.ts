@@ -1366,6 +1366,67 @@ Solution: ${brandAnalysis.solution || "없음"}`;
     }
   });
 
+  // ── 월간 희망 콘텐츠 ──────────────────────────────────────────────────────────
+
+  // 생성
+  app.post("/api/monthly-content/generate", isAuthenticated, async (req: any, res) => {
+    try {
+      const { generateMonthlyContent } = await import("./monthly-content");
+      const result = await generateMonthlyContent();
+      res.json(result);
+    } catch (error: any) {
+      console.error("[monthly-content] 생성 오류:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // 저장
+  app.post("/api/monthly-content/save", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = (req.user as any).id;
+      const { quote, caption, hashtags, imageBase64, month } = req.body;
+      if (!quote) return res.status(400).json({ error: "quote가 필요합니다." });
+
+      const currentMonth = month || new Date().toISOString().slice(0, 7); // "2025-06"
+      const saved = await storage.createMonthlyContent({
+        userId,
+        month: currentMonth,
+        quote,
+        caption: caption || "",
+        hashtags: Array.isArray(hashtags) ? hashtags : [],
+        imageBase64: imageBase64 || null,
+        imageUrl: null,
+        status: "draft",
+      });
+      res.json(saved);
+    } catch (error: any) {
+      console.error("[monthly-content] 저장 오류:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // 목록 조회
+  app.get("/api/monthly-content", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = (req.user as any).id;
+      const list = await storage.getMonthlyContents(userId);
+      res.json(list);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // 삭제
+  app.delete("/api/monthly-content/:id", isAuthenticated, async (req: any, res) => {
+    try {
+      const userId = (req.user as any).id;
+      const ok = await storage.deleteMonthlyContent(req.params.id, userId);
+      res.json({ success: ok });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+
   // Scripture Content CRUD endpoints
   app.post("/api/scripture-contents", isAuthenticated, async (req: any, res) => {
     try {

@@ -1,4 +1,4 @@
-import { type User, type UpsertUser, type ContentSet, type InsertContentSet, type BrandAnalysis, type InsertBrandAnalysis, type MonthlyPlan, type InsertMonthlyPlan, type ScriptureContent, type InsertScriptureContent, type ScriptureAutomation, type InsertScriptureAutomation, type SavedYoutubeChannel, type InsertSavedYoutubeChannel, type InventionIdea, type InsertInventionIdea, type InventionContent, type InsertInventionContent, type UploadHistory, type InsertUploadHistory, type ApiKey, type PlatformConnection, type InsertPlatformConnection, users, contentSets, brandAnalyses, monthlyPlans, scriptureContents, scriptureAutomations, savedYoutubeChannels, inventionIdeas, inventionContents, uploadHistory, apiKeys, platformConnections } from "@shared/schema";
+import { type User, type UpsertUser, type ContentSet, type InsertContentSet, type BrandAnalysis, type InsertBrandAnalysis, type MonthlyPlan, type InsertMonthlyPlan, type ScriptureContent, type InsertScriptureContent, type ScriptureAutomation, type InsertScriptureAutomation, type SavedYoutubeChannel, type InsertSavedYoutubeChannel, type InventionIdea, type InsertInventionIdea, type InventionContent, type InsertInventionContent, type UploadHistory, type InsertUploadHistory, type ApiKey, type PlatformConnection, type InsertPlatformConnection, type MonthlyContent, type InsertMonthlyContent, users, contentSets, brandAnalyses, monthlyPlans, scriptureContents, scriptureAutomations, savedYoutubeChannels, inventionIdeas, inventionContents, uploadHistory, apiKeys, platformConnections, monthlyContents } from "@shared/schema";
 import { randomUUID } from "crypto";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
@@ -1192,6 +1192,34 @@ export class PostgresStorage implements IStorage {
     const result = await this.db
       .delete(platformConnections)
       .where(and(eq(platformConnections.userId, userId), eq(platformConnections.platform, platform)))
+      .returning();
+    return result.length > 0;
+  }
+
+  // ── 월간 희망 콘텐츠 ────────────────────────────────────────────────────────
+
+  async createMonthlyContent(data: InsertMonthlyContent): Promise<MonthlyContent> {
+    const [created] = await this.db.insert(monthlyContents).values(data).returning();
+    return created;
+  }
+
+  async getMonthlyContents(userId: string): Promise<MonthlyContent[]> {
+    return this.db
+      .select()
+      .from(monthlyContents)
+      .where(eq(monthlyContents.userId, userId))
+      .orderBy(desc(monthlyContents.createdAt));
+  }
+
+  async getMonthlyContent(id: string): Promise<MonthlyContent | undefined> {
+    const [row] = await this.db.select().from(monthlyContents).where(eq(monthlyContents.id, id));
+    return row;
+  }
+
+  async deleteMonthlyContent(id: string, userId: string): Promise<boolean> {
+    const result = await this.db
+      .delete(monthlyContents)
+      .where(and(eq(monthlyContents.id, id), eq(monthlyContents.userId, userId)))
       .returning();
     return result.length > 0;
   }

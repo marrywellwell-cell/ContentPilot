@@ -1,4 +1,4 @@
-import { Home, Sparkles, Calendar, BarChart3, Settings, Instagram, Users, LogOut, Target, CalendarDays, Youtube, Lightbulb, List, Key } from "lucide-react";
+import { Home, Sparkles, Calendar, BarChart3, Settings, Instagram, Users, LogOut, Target, CalendarDays, Youtube, Lightbulb, List, Key, Sun } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import {
   Sidebar,
@@ -39,12 +39,19 @@ const menuItems = [
     testId: "nav-generate",
     description: "키워드를 입력하면 인스타그램과 블로그 콘텐츠를 AI가 생성합니다"
   },
-  { 
-    title: "유튜브 말씀", 
-    url: "/youtube-scripture", 
-    icon: Youtube, 
+  {
+    title: "유튜브 말씀",
+    url: "/youtube-scripture",
+    icon: Youtube,
     testId: "nav-youtube-scripture",
     description: "유튜브 영상을 분석하여 성경 말씀 기반 콘텐츠를 생성합니다"
+  },
+  {
+    title: "월간 희망 콘텐츠",
+    url: "/monthly-hope",
+    icon: Sun,
+    testId: "nav-monthly-hope",
+    description: "AI가 매달 희망 글귀·이미지·캡션·해시태그를 자동 생성합니다"
   },
   { 
     title: "발명 아이디어", 

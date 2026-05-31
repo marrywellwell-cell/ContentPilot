@@ -281,18 +281,36 @@ export async function generateScriptureContent(
       messages: [
         {
           role: "system",
-          content: `당신은 기독교 콘텐츠 분석 전문가입니다.
+          content: `당신은 기독교 콘텐츠 분석 전문가입니다. 유튜브 영상 자막을 정확하게 분석하여 요약을 생성합니다.
 
-핵심 말씀 추출 원칙:
-- 영상에서 설교자가 직접 언급한 성경 구절을 찾아 추출
-- 반드시 개역개정(개역개정한글판) 번역 원문을 사용
-- verseContent에 구절 전체를 빠짐없이 기재 (생략 금지)
-- 단어 변형 금지
+중요한 분석 원칙:
+1. 영상에서 실제로 다루는 내용만 요약하세요
+2. 추측하거나 일반적인 내용을 추가하지 마세요
+3. 설교자/발표자의 실제 메시지를 정확히 반영하세요
+4. 각 요약 문장은 구체적이고 명확해야 합니다
+
+핵심 말씀 추출 (매우 중요):
+- 영상에서 설교자가 직접 언급하거나 인용한 성경 구절을 찾아서 추출하세요
+- AI가 추천하는 것이 아니라, 영상 내용에서 실제로 다루는 핵심 말씀(본문 말씀)을 찾으세요
+- 성경 구절이 여러 개 언급되었다면, 가장 핵심이 되는 말씀(오늘의 본문)을 선택하세요
+- verseContent에는 해당 구절의 전체 내용을 빠짐없이 포함하세요
+- 절대로 "..." 등으로 생략하지 마세요. 구절 전체를 완전하게 적어주세요
+- 여러 절이 언급되었다면 (예: 로마서 8:28-30) 해당하는 모든 절의 전체 내용을 포함하세요
+
+성경 말씀 정확성 (반드시 준수):
+- 반드시 개역개정(개정개역한글판) 번역본의 정확한 원문을 사용하세요
+- 자막에 오타가 있어도 성경 원문은 정확하게 작성하세요
+- 예시 (누가복음 1:12-13 개역개정):
+  "12 사가랴가 보고 놀라며 무서워하니 13 천사가 이르되 사가랴여 무서워하지 말라 네 간구함이 들린지라 네 아내 엘리사벳이 네게 아들을 낳아 주리니 그 이름을 요한이라 하라"
+- 예시 (잠언 11:24-25 개역개정):
+  "24 흩어 구제하여도 더욱 부하게 되는 일이 있나니 과도히 아껴도 가난하게 될 뿐이니라 25 구제를 좋아하는 자는 풍족하여질 것이요 남을 윤택하게 하는 자는 자기도 윤택하여지리라"
+- 단어를 변형하지 마세요. 예: "흩어"를 "후히"로 바꾸면 안됩니다
+- 성경 구절의 정확한 철자와 어휘를 사용하세요
 
 출력 JSON:
 {
-  "summary": ["1. 주제/배경", "2. 핵심1", "3. 핵심2", "4. 핵심3/예시", "5. 결론/적용"],
-  "coreMessage": "설교자의 핵심 메시지 한 문장",
+  "summary": ["1. 영상의 주제/배경 소개", "2. 첫 번째 핵심 포인트", "3. 두 번째 핵심 포인트", "4. 세 번째 핵심 포인트 또는 예시", "5. 결론 및 적용점"],
+  "coreMessage": "영상의 핵심 메시지 한 문장 (설교자의 의도 반영)",
   "verseReference": "로마서 8:28",
   "verseContent": "우리가 알거니와 하나님을 사랑하는 자 곧 그의 뜻대로 부르심을 입은 자들에게는 모든 것이 합력하여 선을 이루느니라"
 }`,
@@ -362,8 +380,39 @@ JSON: { "caption": "캡션 전문", "hashtags": ["#해시태그1",...(8-10개)] 
     hashtags = Array.isArray(parsed.hashtags) ? parsed.hashtags : [];
   } catch {}
 
-  // ── Step 4: 이미지 생성 + Canvas 오버레이 (메모리 전용) ─────────────────
-  const imagePrompt = `Beautiful nature scene for Christian devotional. Soft morning light through trees, spring cherry blossoms, peaceful meadow with wildflowers, or gentle sunrise over mountains. Bright airy pastel tones, high-key lighting, no Bible books, no church buildings, no people, no text. Square format. High quality photorealistic.`;
+  // ── Step 4: 이미지 프롬프트 생성 → 이미지 생성 + Canvas 오버레이 ─────────
+  // Holy AI Creator 방식: 말씀/핵심메시지 기반으로 GPT가 맞춤 이미지 프롬프트 생성
+  let imagePrompt = `Beautiful nature scene for Christian devotional. Soft morning light, spring flowers, peaceful landscape. Bright pastel tones. No people, no text. Square format.`;
+  try {
+    const promptRes = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      max_tokens: 256,
+      messages: [
+        {
+          role: "system",
+          content: `Create a detailed image prompt for a 1080x1080 Instagram post background image. The image should be:
+- Peaceful and spiritual Christian aesthetic matching the Bible verse theme
+- Beautiful nature scenery (flowers, landscape, sunrise, water, forest — NO Bible books, NO church buildings)
+- Bright, airy, high-key lighting with soft pastel tones
+- Suitable for text overlay
+- NO people, NO faces, NO hands, NO text in image
+- Professional photorealistic quality
+
+Respond with ONLY the English prompt text, no JSON, no explanation.`,
+        },
+        {
+          role: "user",
+          content: `Create an image prompt based on this Bible verse and message:
+Verse: ${textContent.verseReference} - "${textContent.verseContent}"
+Core message: ${textContent.coreMessage}`,
+        },
+      ],
+    });
+    const generated = promptRes.choices[0]?.message?.content?.trim();
+    if (generated) imagePrompt = generated;
+  } catch (e) {
+    console.warn("[scripture-generator] 이미지 프롬프트 생성 실패, 기본값 사용");
+  }
 
   const UNSPLASH_FALLBACK = "https://images.unsplash.com/photo-1499652848871-1527a310b13a?w=1080&h=1080&fit=crop";
   let imageUrl = UNSPLASH_FALLBACK;
@@ -425,7 +474,28 @@ export async function generateVerseImage(
   instagramSlides: string[] = []
 ): Promise<{ imageBase64?: string; thumbnailBase64?: string; imageUrl: string; slideImages: string[]; slideThumbUrls: string[] }> {
   const UNSPLASH_FALLBACK = "https://images.unsplash.com/photo-1499652848871-1527a310b13a?w=1080&h=1080&fit=crop";
-  const imagePrompt = `Beautiful nature scene for Christian devotional. Soft morning light through trees, spring cherry blossoms, peaceful meadow with wildflowers, or gentle sunrise over mountains. Bright airy pastel tones, high-key lighting, no Bible books, no church buildings, no people, no text. Square format. High quality photorealistic.`;
+  const openai = getOpenAI();
+
+  // 말씀 기반 맞춤 이미지 프롬프트 생성 (Holy AI Creator 방식)
+  let imagePrompt = `Peaceful spiritual nature background, soft morning light, spring flowers. Bright pastel. No people, no text.`;
+  try {
+    const promptRes = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      max_tokens: 200,
+      messages: [
+        {
+          role: "system",
+          content: `Create a short English image prompt for a Christian Instagram post background. Beautiful nature only (NO Bible books, NO churches, NO people, NO faces). Bright, airy, pastel tones. Photorealistic. Max 2 sentences.`,
+        },
+        {
+          role: "user",
+          content: `Bible verse: ${verseReference} - "${verseContent}"`,
+        },
+      ],
+    });
+    const p = promptRes.choices[0]?.message?.content?.trim();
+    if (p) imagePrompt = p;
+  } catch {}
 
   let imageUrl = UNSPLASH_FALLBACK;
   let imageBase64: string | undefined;
