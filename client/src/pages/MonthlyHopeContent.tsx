@@ -35,13 +35,21 @@ interface SavedContent {
   createdAt: string;
 }
 
-const MONTHS = Array.from({ length: 12 }, (_, i) => {
+// 올해 1~12월 + 내년 1~12월 (총 24개)
+const buildMonths = () => {
   const now = new Date();
-  const d = new Date(now.getFullYear(), now.getMonth() + i - 1, 1);
-  const value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-  const label = `${d.getFullYear()}년 ${d.getMonth() + 1}월`;
-  return { value, label };
-});
+  const thisYear = now.getFullYear();
+  const months = [];
+  for (const year of [thisYear, thisYear + 1]) {
+    for (let m = 1; m <= 12; m++) {
+      const value = `${year}-${String(m).padStart(2, "0")}`;
+      const label = `${year}년 ${m}월`;
+      months.push({ value, label, month: m });
+    }
+  }
+  return months;
+};
+const MONTHS = buildMonths();
 
 const MONTH_SEASON: Record<number, string> = {
   1:"❄️ 새해·겨울", 2:"🌱 입춘·봄준비", 3:"🌸 봄", 4:"🌷 벚꽃", 5:"🌿 가정의달",
@@ -178,9 +186,9 @@ export default function MonthlyHopeContent() {
               <SelectContent>
                 {MONTHS.map((m) => (
                   <SelectItem key={m.value} value={m.value}>
-                    {m.label} &nbsp;
-                    <span className="text-muted-foreground text-xs">
-                      {MONTH_SEASON[parseInt(m.value.split("-")[1])]}
+                    <span className="flex items-center gap-2">
+                      <span>{m.label}</span>
+                      <span className="text-xs text-muted-foreground">{MONTH_SEASON[m.month]}</span>
                     </span>
                   </SelectItem>
                 ))}

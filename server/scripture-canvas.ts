@@ -2,18 +2,39 @@
  * scripture-canvas.ts — Canvas 텍스트 오버레이 공유 유틸 (메모리 처리, 파일시스템 불필요)
  */
 import * as path from "path";
+import { fileURLToPath } from "url";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 let fontsRegistered = false;
 
 async function ensureFonts() {
   if (fontsRegistered) return;
-  try {
-    const { registerFont } = await import("canvas");
-    const fontDir = path.join(process.cwd(), "server", "fonts");
-    registerFont(path.join(fontDir, "NotoSansKR-Bold.ttf"), { family: "NotoSansKR", weight: "bold" });
-    registerFont(path.join(fontDir, "NotoSansKR-Regular.ttf"), { family: "NotoSansKR", weight: "normal" });
-    fontsRegistered = true;
-  } catch {}
+  const { registerFont } = await import("canvas");
+
+  // 후보 경로: ESM __dirname 기준 → process.cwd() 기준 순으로 시도
+  const candidates = [
+    path.join(__dirname, "fonts"),
+    path.join(process.cwd(), "server", "fonts"),
+    path.join(process.cwd(), "fonts"),
+  ];
+
+  for (const fontDir of candidates) {
+    try {
+      const boldPath = path.join(fontDir, "NotoSansKR-Bold.ttf");
+      const regularPath = path.join(fontDir, "NotoSansKR-Regular.ttf");
+      const { existsSync } = await import("fs");
+      if (!existsSync(boldPath)) continue;
+      registerFont(boldPath, { family: "NotoSansKR", weight: "bold" });
+      registerFont(regularPath, { family: "NotoSansKR", weight: "normal" });
+      fontsRegistered = true;
+      console.log("[canvas] 폰트 등록 성공:", fontDir);
+      return;
+    } catch (e: any) {
+      console.warn("[canvas] 폰트 경로 실패:", fontDir, e.message?.slice(0, 60));
+    }
+  }
+  console.error("[canvas] 모든 폰트 경로 실패 — 한국어 폰트 없이 렌더링");
 }
 
 function wrapText(ctx: any, text: string, maxWidth: number, maxLines = 8): string[] {
@@ -351,70 +372,84 @@ export async function addQuoteOverlayToBase64(
     const canvas = createCanvas(W, H);
     const ctx = canvas.getContext("2d") as any;
 
-    // 배경 이미지 (흰 배경 + 55% opacity로 밝게)
-    ctx.fillStyle = "#FFFFFF";
-    ctx.fillRect(0, 0, W, H);
+    // 배경 이미지 — 원본 그대로 표시 (opacity 조정 없음)
     const image = await loadImage(base64ToBuffer(imageBase64));
-    ctx.globalAlpha = 0.60;
     ctx.drawImage(image, 0, 0, W, H);
-    ctx.globalAlpha = 1.0;
 
-    // 하단 그라데이션 오버레이
-    const gradH = H * 0.55;
+    // 하단 그라데이션 오버레이 (텍스트 가독성 확보)
+    const gradH = H * 0.50;
     const grad = ctx.createLinearGradient(0, H - gradH, 0, H);
     grad.addColorStop(0, "rgba(0,0,0,0)");
-    grad.addColorStop(0.5, "rgba(0,0,0,0.45)");
-    grad.addColorStop(1, "rgba(0,0,0,0.72)");
+    grad.addColorStop(0.4, "rgba(0,0,0,0.55)");
+    grad.addColorStop(1, "rgba(0,0,0,0.82)");
     ctx.fillStyle = grad;
     ctx.fillRect(0, H - gradH, W, gradH);
 
-    // 글귀 텍스트 (줄바꿈 처리)
-    const maxWidth = W * 0.82;
-    const fontSize = Math.min(68, Math.max(48, Math.floor(W / (quote.length > 30 ? 18 : 14))));
-    ctx.font = `bold ${fontSize}px "NotoSansKR", serif`;
+    // 폰트 설정 (NotoSansKR 우선, 없으면 sans-serif)
+    const fontFamily = fontsRegistered ? '"NotoSansKR", sans-serif' : "sans-serif";
+
+    // 줄 분리 (명시적 \n + 자동 줄바꿈)
+    const inputLines = quote.split("\n").filter(l => l !== undefined);
+    const maxWidth = W * 0.80;
+
+    // 폰트 크기: 한 줄당 글자 수 기준
+    const maxLineLen = Math.max(...inputLines.map(l => l.length), 1);
+    const fontSize = Math.min(72, Math.max(44, Math.floor(W * 0.72 / maxLineLen)));
+    ctx.font = `bold ${fontSize}px ${fontFamily}`;
     ctx.fillStyle = "#FFFFFF";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
 
-    // 명시적 줄바꿈 + 자동 줄바꿈
-    const inputLines = quote.split("\n");
     const allLines: string[] = [];
     for (const line of inputLines) {
       if (!line.trim()) { allLines.push(""); continue; }
-      const words = line.split(" ");
-      let cur = "";
-      for (const word of words) {
-        const test = cur ? `${cur} ${word}` : word;
-        if (ctx.measureText(test).width > maxWidth && cur) {
-          allLines.push(cur);
-          cur = word;
-        } else { cur = test; }
+      // 한국어는 공백 없이 문자 단위로도 줄바꿈
+      if (ctx.measureText(line).width <= maxWidth) {
+        allLines.push(line);
+      } else {
+        let cur = "";
+        for (const ch of [...line]) {
+          const test = cur + ch;
+          if (ctx.measureText(test).width > maxWidth && cur) {
+            allLines.push(cur);
+            cur = ch;
+          } else { cur = test; }
+        }
+        if (cur) allLines.push(cur);
       }
-      if (cur) allLines.push(cur);
     }
 
-    const lineHeight = fontSize * 1.55;
+    const lineHeight = fontSize * 1.6;
     const totalH = allLines.length * lineHeight;
-    const startY = H * 0.75 - totalH / 2 + lineHeight / 2;
+    // 텍스트 블록을 이미지 아래쪽 35% 지점 중앙에 배치
+    const centerY = H * 0.78;
+    const startY = centerY - totalH / 2 + lineHeight / 2;
 
-    // 텍스트 그림자
-    ctx.shadowColor = "rgba(0,0,0,0.5)";
-    ctx.shadowBlur = 12;
-    ctx.shadowOffsetY = 3;
+    // 장식선 (위)
+    const decoY = startY - lineHeight * 0.9;
+    ctx.strokeStyle = "rgba(255,255,255,0.55)";
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(W * 0.28, decoY);
+    ctx.lineTo(W * 0.72, decoY);
+    ctx.stroke();
 
+    // 텍스트 그림자 + 렌더링
+    ctx.shadowColor = "rgba(0,0,0,0.65)";
+    ctx.shadowBlur = 16;
+    ctx.shadowOffsetY = 4;
     for (let i = 0; i < allLines.length; i++) {
       ctx.fillText(allLines[i], W / 2, startY + i * lineHeight);
     }
 
-    // 장식선
+    // 장식선 (아래)
     ctx.shadowBlur = 0;
     ctx.shadowOffsetY = 0;
-    const lineY = startY - lineHeight * 0.8;
-    ctx.strokeStyle = "rgba(255,255,255,0.6)";
-    ctx.lineWidth = 2;
+    const decoY2 = startY + totalH - lineHeight * 0.1;
+    ctx.strokeStyle = "rgba(255,255,255,0.35)";
     ctx.beginPath();
-    ctx.moveTo(W * 0.3, lineY);
-    ctx.lineTo(W * 0.7, lineY);
+    ctx.moveTo(W * 0.35, decoY2);
+    ctx.lineTo(W * 0.65, decoY2);
     ctx.stroke();
 
     return `data:image/jpeg;base64,${canvas.toBuffer("image/jpeg", { quality: 0.92 }).toString("base64")}`;
