@@ -128,12 +128,15 @@ export default function MonthlyHopeContent() {
     onError: (e: Error) => toast({ title: "생성 실패", description: e.message, variant: "destructive" }),
   });
 
+  // 스타일 전환 → 캔버스 오버레이 (rawImageBase64에 quote 텍스트 적용, 빠름)
   const applyStyleMutation = useMutation({
     mutationFn: (styleId: string) => {
       const style = generated!.styles.find(s => s.id === styleId)!;
+      const bg = generated!.rawImageBase64;
+      if (!bg) throw new Error("배경 이미지가 없습니다. 전체 재생성을 눌러주세요.");
       return apiRequest("/api/monthly-content/apply-text", {
         method: "POST",
-        body: JSON.stringify({ imageBase64: generated!.rawImageBase64, quote: style.quote, style, month: selectedMonth }),
+        body: JSON.stringify({ imageBase64: bg, quote: style.quote }),
       }) as Promise<{ imageBase64: string }>;
     },
     onSuccess: (data, styleId) => {
@@ -142,20 +145,38 @@ export default function MonthlyHopeContent() {
       setQuoteText(generated!.styles.find(s => s.id === styleId)?.quote ?? "");
       setEditingQuote(false);
     },
-    onError: (e: Error) => toast({ title: "이미지 생성 실패", description: e.message, variant: "destructive" }),
+    onError: (e: Error) => toast({ title: "이미지 적용 실패", description: e.message, variant: "destructive" }),
   });
 
+  // 글귀 직접 수정 → 캔버스 오버레이
   const applyEditMutation = useMutation({
-    mutationFn: () => apiRequest("/api/monthly-content/apply-text", {
-      method: "POST",
-      body: JSON.stringify({ imageBase64: generated!.rawImageBase64, quote: quoteText, month: selectedMonth }),
-    }) as Promise<{ imageBase64: string }>,
+    mutationFn: () => {
+      const bg = generated!.rawImageBase64;
+      if (!bg) throw new Error("배경 이미지가 없습니다.");
+      return apiRequest("/api/monthly-content/apply-text", {
+        method: "POST",
+        body: JSON.stringify({ imageBase64: bg, quote: quoteText }),
+      }) as Promise<{ imageBase64: string }>;
+    },
     onSuccess: (data) => {
       setGenerated(prev => prev ? { ...prev, imageBase64: data.imageBase64 } : prev);
       setEditingQuote(false);
       toast({ title: "이미지 적용 완료!" });
     },
     onError: (e: Error) => toast({ title: "적용 실패", description: e.message, variant: "destructive" }),
+  });
+
+  // 고급 이미지 → gpt-image-1
+  const premiumImageMutation = useMutation({
+    mutationFn: () => apiRequest("/api/monthly-content/premium-image", {
+      method: "POST",
+      body: JSON.stringify({ style: activeStyle, month: selectedMonth, rawImageBase64: generated!.rawImageBase64 }),
+    }) as Promise<{ imageBase64: string }>,
+    onSuccess: (data) => {
+      setGenerated(prev => prev ? { ...prev, imageBase64: data.imageBase64 } : prev);
+      toast({ title: "고급 이미지 생성 완료!" });
+    },
+    onError: (e: Error) => toast({ title: "생성 실패", description: e.message, variant: "destructive" }),
   });
 
   const saveMutation = useMutation({
@@ -179,6 +200,7 @@ export default function MonthlyHopeContent() {
   });
 
   const isApplying = applyStyleMutation.isPending || applyEditMutation.isPending;
+  const isPremium = premiumImageMutation.isPending;
 
   // ── 렌더 ──────────────────────────────────────────────────────────────────
 
@@ -317,38 +339,58 @@ export default function MonthlyHopeContent() {
           </div>
 
           {/* ── 이미지 미리보기 ── */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
+          <div className="space-y-3">
+            <div className="flex items-center justify-between flex-wrap gap-2">
               <h3 className="text-sm font-semibold flex items-center gap-2">
                 <ImageIcon className="w-4 h-4 text-amber-500" />
-                인스타그램 이미지 <span className="text-xs font-normal text-muted-foreground">1080×1350</span>
-                {activeStyle && <Badge variant="outline" className="text-[10px] ml-1">{activeStyle.label}</Badge>}
+                인스타그램 이미지
+                <span className="text-xs font-normal text-muted-foreground">1080×1350</span>
+                {activeStyle && <Badge variant="outline" className="text-[10px]">{activeStyle.label}</Badge>}
               </h3>
-              {generated.imageBase64 && (
-                <Button size="sm" variant="ghost" className="h-7 px-2 gap-1 text-xs"
-                  onClick={() => downloadImage(generated.imageBase64!, selectedMonth)}>
-                  <Download className="w-3.5 h-3.5" />다운로드
+              <div className="flex gap-1.5">
+                {/* 고급 이미지 버튼 (gpt-image-1) */}
+                <Button size="sm" variant="outline"
+                  className="h-7 px-2 gap-1 text-xs border-amber-300 text-amber-700 hover:bg-amber-50"
+                  onClick={() => premiumImageMutation.mutate()}
+                  disabled={isPremium || !activeStyle}>
+                  {isPremium ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+                  {isPremium ? "생성 중..." : "고급 이미지"}
                 </Button>
-              )}
+                {generated.imageBase64 && (
+                  <Button size="sm" variant="ghost" className="h-7 px-2 gap-1 text-xs"
+                    onClick={() => downloadImage(generated.imageBase64!, selectedMonth)}>
+                    <Download className="w-3.5 h-3.5" />다운로드
+                  </Button>
+                )}
+              </div>
             </div>
 
-            {isApplying ? (
-              <div className="flex items-center justify-center h-56 bg-gradient-to-br from-amber-50 to-orange-50 dark:from-amber-950/30 dark:to-orange-950/20 rounded-xl border border-amber-100">
-                <div className="text-center space-y-2">
-                  <Loader2 className="w-8 h-8 animate-spin text-amber-500 mx-auto" />
-                  <p className="text-sm font-medium">AI 디자인 이미지 생성 중...</p>
-                  <p className="text-xs text-muted-foreground">gpt-image-1 고급 합성 (20~40초)</p>
+            {(isApplying || isPremium) ? (
+              <div className="flex items-center justify-center bg-gradient-to-br from-amber-50 to-orange-50 dark:from-amber-950/30 dark:to-orange-950/20 rounded-2xl border border-amber-100"
+                style={{ aspectRatio: "1080/1350", maxHeight: "480px" }}>
+                <div className="text-center space-y-2 p-8">
+                  <Loader2 className="w-10 h-10 animate-spin text-amber-500 mx-auto" />
+                  <p className="text-sm font-medium">
+                    {isPremium ? "AI 고급 디자인 생성 중..." : "이미지에 글귀 적용 중..."}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {isPremium ? "gpt-image-1 합성 (20~40초)" : "잠시만 기다려주세요"}
+                  </p>
                 </div>
               </div>
             ) : generated.imageBase64 ? (
               <div className="flex justify-center">
                 <img src={generated.imageBase64} alt="희망 이미지"
-                  className="w-full max-w-[300px] rounded-2xl shadow-xl"
-                  style={{ aspectRatio: "1080/1350", objectFit: "cover" }} />
+                  className="w-full rounded-2xl shadow-xl"
+                  style={{ maxWidth: "400px", aspectRatio: "1080/1350", objectFit: "cover" }} />
               </div>
             ) : (
-              <div className="flex items-center justify-center h-40 bg-muted rounded-xl border-2 border-dashed">
-                <p className="text-sm text-muted-foreground">이미지 없음 — 스타일 카드를 클릭해 생성</p>
+              <div className="flex items-center justify-center bg-muted rounded-2xl border-2 border-dashed"
+                style={{ aspectRatio: "1080/1350", maxHeight: "480px" }}>
+                <div className="text-center space-y-2 p-8">
+                  <ImageIcon className="w-10 h-10 mx-auto text-muted-foreground/30" />
+                  <p className="text-sm text-muted-foreground">스타일 카드를 클릭하면<br />이미지에 글귀가 적용됩니다</p>
+                </div>
               </div>
             )}
 

@@ -251,20 +251,17 @@ JSON:
 
   if (styles.length === 0) return { styles, hashtags, rawImageBase64: null, imageBase64: null };
 
-  // 2단계: gpt-image-1로 디자인 이미지 생성 (1번째 스타일 기준)
-  let imageBase64: string | null = null;
-  let rawImageBase64: string | null = null;
+  // 2단계: 배경 이미지(Pollinations) + gpt-image-1 동시 시도
+  const [rawImageBase64, designedImage] = await Promise.all([
+    generateBgImage(monthNum),           // 항상 생성 — 스타일 전환용 캔버스 폴백
+    generateDesignedImage(monthNum, year, styles[0]), // gpt-image-1 고품질
+  ]);
 
-  // gpt-image-1 시도
-  imageBase64 = await generateDesignedImage(monthNum, year, styles[0]);
-
-  // 폴백: Pollinations + 캔버스 오버레이
-  if (!imageBase64) {
-    rawImageBase64 = await generateBgImage(monthNum);
-    if (rawImageBase64) {
-      try { imageBase64 = await applyQuoteToImage(rawImageBase64, styles[0].quote); }
-      catch { imageBase64 = rawImageBase64; }
-    }
+  // imageBase64: gpt-image-1 성공 → 사용, 실패 → 캔버스 오버레이 폴백
+  let imageBase64: string | null = designedImage;
+  if (!imageBase64 && rawImageBase64) {
+    try { imageBase64 = await applyQuoteToImage(rawImageBase64, styles[0].quote); }
+    catch { imageBase64 = rawImageBase64; }
   }
 
   return { styles, hashtags, rawImageBase64, imageBase64 };
