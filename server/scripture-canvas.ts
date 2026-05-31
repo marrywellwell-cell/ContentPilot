@@ -372,87 +372,118 @@ export async function addQuoteOverlayToBase64(
     const canvas = createCanvas(W, H);
     const ctx = canvas.getContext("2d") as any;
 
-    // 배경 이미지 — 원본 그대로 표시 (opacity 조정 없음)
+    // ── 배경 이미지 ──
     const image = await loadImage(base64ToBuffer(imageBase64));
     ctx.drawImage(image, 0, 0, W, H);
 
-    // 하단 그라데이션 오버레이 (텍스트 가독성 확보)
-    const gradH = H * 0.50;
+    // ── 전체 어두운 베일 (살짝) ──
+    ctx.fillStyle = "rgba(10,10,20,0.22)";
+    ctx.fillRect(0, 0, W, H);
+
+    // ── 하단 그라데이션 (깊고 고급스러운 검정) ──
+    const gradH = H * 0.62;
     const grad = ctx.createLinearGradient(0, H - gradH, 0, H);
     grad.addColorStop(0, "rgba(0,0,0,0)");
-    grad.addColorStop(0.4, "rgba(0,0,0,0.55)");
-    grad.addColorStop(1, "rgba(0,0,0,0.82)");
+    grad.addColorStop(0.35, "rgba(5,5,15,0.5)");
+    grad.addColorStop(0.7, "rgba(5,5,15,0.78)");
+    grad.addColorStop(1, "rgba(5,5,15,0.92)");
     ctx.fillStyle = grad;
     ctx.fillRect(0, H - gradH, W, gradH);
 
-    // 폰트 설정 (NotoSansKR 우선, 없으면 sans-serif)
+    // ── 폰트 / 텍스트 설정 ──
     const fontFamily = fontsRegistered ? '"NotoSansKR", sans-serif' : "sans-serif";
-
-    // 줄 분리 (명시적 \n + 자동 줄바꿈)
-    const inputLines = quote.split("\n").filter(l => l !== undefined);
-    const maxWidth = W * 0.80;
-
-    // 폰트 크기: 한 줄당 글자 수 기준
+    const inputLines = quote.split("\n");
     const maxLineLen = Math.max(...inputLines.map(l => l.length), 1);
-    const fontSize = Math.min(72, Math.max(44, Math.floor(W * 0.72 / maxLineLen)));
-    ctx.font = `bold ${fontSize}px ${fontFamily}`;
-    ctx.fillStyle = "#FFFFFF";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
+    const fontSize = Math.min(76, Math.max(46, Math.floor(W * 0.75 / maxLineLen)));
+    const lineHeight = fontSize * 1.72;
+    const maxWidth = W * 0.78;
 
+    // 자동 줄바꿈
     const allLines: string[] = [];
     for (const line of inputLines) {
       if (!line.trim()) { allLines.push(""); continue; }
-      // 한국어는 공백 없이 문자 단위로도 줄바꿈
+      ctx.font = `bold ${fontSize}px ${fontFamily}`;
       if (ctx.measureText(line).width <= maxWidth) {
         allLines.push(line);
       } else {
         let cur = "";
         for (const ch of [...line]) {
           const test = cur + ch;
-          if (ctx.measureText(test).width > maxWidth && cur) {
-            allLines.push(cur);
-            cur = ch;
-          } else { cur = test; }
+          if (ctx.measureText(test).width > maxWidth && cur) { allLines.push(cur); cur = ch; }
+          else { cur = test; }
         }
         if (cur) allLines.push(cur);
       }
     }
 
-    const lineHeight = fontSize * 1.6;
-    const totalH = allLines.length * lineHeight;
-    // 텍스트 블록을 이미지 아래쪽 35% 지점 중앙에 배치
-    const centerY = H * 0.78;
-    const startY = centerY - totalH / 2 + lineHeight / 2;
+    const totalTextH = allLines.length * lineHeight;
+    const blockCenterY = H * 0.80;
+    const startY = blockCenterY - totalTextH / 2 + lineHeight / 2;
 
-    // 장식선 (위)
-    const decoY = startY - lineHeight * 0.9;
-    ctx.strokeStyle = "rgba(255,255,255,0.55)";
-    ctx.lineWidth = 1.5;
+    // ── 황금 장식선 (위) ──
+    const decoY = startY - lineHeight * 1.1;
+    const goldGrad = ctx.createLinearGradient(W * 0.2, 0, W * 0.8, 0);
+    goldGrad.addColorStop(0, "rgba(212,175,100,0)");
+    goldGrad.addColorStop(0.5, "rgba(212,175,100,0.85)");
+    goldGrad.addColorStop(1, "rgba(212,175,100,0)");
+    ctx.strokeStyle = goldGrad;
+    ctx.lineWidth = 1.2;
+    ctx.beginPath(); ctx.moveTo(W * 0.2, decoY); ctx.lineTo(W * 0.8, decoY); ctx.stroke();
+
+    // 작은 다이아몬드 장식
+    ctx.fillStyle = "rgba(212,175,100,0.75)";
     ctx.beginPath();
-    ctx.moveTo(W * 0.28, decoY);
-    ctx.lineTo(W * 0.72, decoY);
-    ctx.stroke();
+    ctx.moveTo(W / 2, decoY - 8);
+    ctx.lineTo(W / 2 + 6, decoY);
+    ctx.lineTo(W / 2, decoY + 8);
+    ctx.lineTo(W / 2 - 6, decoY);
+    ctx.closePath();
+    ctx.fill();
 
-    // 텍스트 그림자 + 렌더링
-    ctx.shadowColor = "rgba(0,0,0,0.65)";
-    ctx.shadowBlur = 16;
-    ctx.shadowOffsetY = 4;
+    // ── 텍스트 렌더링 ──
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.font = `bold ${fontSize}px ${fontFamily}`;
+
     for (let i = 0; i < allLines.length; i++) {
-      ctx.fillText(allLines[i], W / 2, startY + i * lineHeight);
+      const y = startY + i * lineHeight;
+      const line = allLines[i];
+      if (!line.trim()) continue;
+
+      // 텍스트 그림자 (깊이감)
+      ctx.shadowColor = "rgba(0,0,0,0.9)";
+      ctx.shadowBlur = 24;
+      ctx.shadowOffsetY = 5;
+      ctx.shadowOffsetX = 0;
+      ctx.fillStyle = "#FFFFFF";
+      ctx.fillText(line, W / 2, y);
+
+      // 미세 골드 광택 레이어
+      ctx.shadowBlur = 0;
+      ctx.shadowOffsetY = 0;
+      ctx.fillStyle = "rgba(255,245,200,0.10)";
+      ctx.fillText(line, W / 2, y - 1);
     }
 
-    // 장식선 (아래)
+    // ── 황금 장식선 (아래) ──
     ctx.shadowBlur = 0;
     ctx.shadowOffsetY = 0;
-    const decoY2 = startY + totalH - lineHeight * 0.1;
-    ctx.strokeStyle = "rgba(255,255,255,0.35)";
-    ctx.beginPath();
-    ctx.moveTo(W * 0.35, decoY2);
-    ctx.lineTo(W * 0.65, decoY2);
-    ctx.stroke();
+    const decoY2 = startY + totalTextH + lineHeight * 0.25;
+    const goldGrad2 = ctx.createLinearGradient(W * 0.25, 0, W * 0.75, 0);
+    goldGrad2.addColorStop(0, "rgba(212,175,100,0)");
+    goldGrad2.addColorStop(0.5, "rgba(212,175,100,0.6)");
+    goldGrad2.addColorStop(1, "rgba(212,175,100,0)");
+    ctx.strokeStyle = goldGrad2;
+    ctx.lineWidth = 1.0;
+    ctx.beginPath(); ctx.moveTo(W * 0.25, decoY2); ctx.lineTo(W * 0.75, decoY2); ctx.stroke();
 
-    return `data:image/jpeg;base64,${canvas.toBuffer("image/jpeg", { quality: 0.92 }).toString("base64")}`;
+    // ── 하단 브랜딩 (선택) ──
+    ctx.font = `normal ${24}px ${fontFamily}`;
+    ctx.fillStyle = "rgba(255,255,255,0.35)";
+    ctx.letterSpacing = "3px";
+    ctx.fillText("✦  HOPE  ✦", W / 2, H - 60);
+
+    return `data:image/jpeg;base64,${canvas.toBuffer("image/jpeg", { quality: 0.94 }).toString("base64")}`;
   } catch (err) {
     console.error("[canvas] addQuoteOverlayToBase64 실패:", err);
     return imageBase64;
