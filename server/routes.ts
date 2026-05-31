@@ -1385,9 +1385,9 @@ Solution: ${brandAnalysis.solution || "없음"}`;
   app.post("/api/monthly-content/apply-text", isAuthenticated, async (req: any, res) => {
     try {
       const { applyQuoteToImage } = await import("./monthly-content");
-      const { imageBase64, quote } = req.body;
+      const { imageBase64, quote, fullText } = req.body;
       if (!imageBase64 || !quote) return res.status(400).json({ error: "imageBase64와 quote가 필요합니다." });
-      const result = await applyQuoteToImage(imageBase64, quote);
+      const result = await applyQuoteToImage(imageBase64, quote, fullText);
       res.json({ imageBase64: result });
     } catch (error: any) {
       console.error("[monthly-content] 캔버스 오버레이 오류:", error);

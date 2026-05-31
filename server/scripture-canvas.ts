@@ -361,9 +361,34 @@ export async function createInstagramSlides(
 
 // ── 월간 희망 글귀 오버레이 (1080×1350 인스타그램용) ─────────────────────────
 
+// bold/italic 마커 제거 헬퍼
+function stripMarkers(text: string): string {
+  return text.replace(/\*\*(.*?)\*\*/g, "$1").replace(/\*(.*?)\*/g, "$1").trim();
+}
+
+// 캔버스 텍스트 줄 분리 (자동 줄바꿈 포함)
+function buildLines(ctx: any, text: string, maxWidth: number, fontSize: number, fontFamily: string): string[] {
+  const lines: string[] = [];
+  for (const raw of text.split("\n")) {
+    const line = raw.trim();
+    if (!line) { lines.push(""); continue; }
+    ctx.font = `${fontSize}px ${fontFamily}`;
+    if (ctx.measureText(line).width <= maxWidth) { lines.push(line); continue; }
+    let cur = "";
+    for (const ch of [...line]) {
+      const test = cur + ch;
+      if (ctx.measureText(test).width > maxWidth && cur) { lines.push(cur); cur = ch; }
+      else { cur = test; }
+    }
+    if (cur) lines.push(cur);
+  }
+  return lines;
+}
+
 export async function addQuoteOverlayToBase64(
   imageBase64: string,
-  quote: string
+  quote: string,
+  fullText?: string
 ): Promise<string> {
   try {
     await ensureFonts();
@@ -371,69 +396,122 @@ export async function addQuoteOverlayToBase64(
     const W = 1080, H = 1350;
     const canvas = createCanvas(W, H);
     const ctx = canvas.getContext("2d") as any;
+    const fontFamily = fontsRegistered ? '"NotoSansKR", sans-serif' : "sans-serif";
 
-    // ── 배경 이미지 ──
+    // ── 배경 이미지 (원본 그대로) ──
     const image = await loadImage(base64ToBuffer(imageBase64));
     ctx.drawImage(image, 0, 0, W, H);
 
-    // ── 전체 어두운 베일 ──
-    ctx.fillStyle = "rgba(10,10,20,0.25)";
-    ctx.fillRect(0, 0, W, H);
+    // ── 상단 살짝 어둡게 ──
+    const topGrad = ctx.createLinearGradient(0, 0, 0, H * 0.35);
+    topGrad.addColorStop(0, "rgba(0,0,0,0.18)");
+    topGrad.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = topGrad;
+    ctx.fillRect(0, 0, W, H * 0.35);
 
-    // ── 하단 그라데이션 ──
-    const gradH = H * 0.65;
-    const grad = ctx.createLinearGradient(0, H - gradH, 0, H);
-    grad.addColorStop(0, "rgba(0,0,0,0)");
-    grad.addColorStop(0.30, "rgba(5,5,15,0.45)");
-    grad.addColorStop(0.65, "rgba(5,5,15,0.75)");
-    grad.addColorStop(1, "rgba(5,5,15,0.90)");
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, H - gradH, W, gradH);
+    // ── fullText로 카드 콘텐츠 구성 ──
+    const source = fullText ? stripMarkers(fullText) : stripMarkers(quote);
 
-    // ── **bold** 마커 제거 + 실제 줄 분리 ──
-    const cleanQuote = quote
-      .replace(/\*\*(.*?)\*\*/g, "$1")  // **text** → text
-      .replace(/\*(.*?)\*/g, "$1")      // *text* → text
-      .trim();
+    // 단락 분리 (빈 줄 기준)
+    const paragraphs = source.split(/\n{2,}/).map(p => p.trim()).filter(Boolean);
 
-    const fontFamily = fontsRegistered ? '"NotoSansKR", sans-serif' : "sans-serif";
+    // 카드 영역 계산
+    const cardPadX = 70, cardPadY = 54;
+    const cardX = 60, cardW = W - 120;
+    const innerW = cardW - cardPadX * 2;
 
-    // 줄 목록: 명시적 \n 우선, 빈 줄 제거
-    const rawLines = cleanQuote.split("\n").filter(l => l.trim().length > 0);
+    // 폰트 크기 결정
+    const titleFontSize = 46;
+    const bodyFontSize = 36;
+    const lineH_title = titleFontSize * 1.65;
+    const lineH_body  = bodyFontSize  * 1.70;
+    const paraGap = 28;
 
-    // 줄이 1개뿐이면 fullText 첫 3줄로 보완 시도
-    const inputLines = rawLines.length >= 2 ? rawLines : rawLines;
+    // 각 단락 줄 계산
+    type Para = { lines: string[]; isFirst: boolean };
+    const parsedParas: Para[] = paragraphs.map((para, i) => ({
+      lines: buildLines(ctx, para, innerW, i === 0 ? titleFontSize : bodyFontSize, fontFamily),
+      isFirst: i === 0,
+    }));
 
-    // 폰트 크기: 가장 긴 줄 기준, 최대 60px
-    const maxLineLen = Math.max(...inputLines.map(l => l.length), 1);
-    const fontSize = Math.min(60, Math.max(40, Math.floor(W * 0.65 / maxLineLen)));
-    const lineHeight = fontSize * 1.80;
-    const maxWidth = W * 0.80;
+    // 카드 전체 높이
+    let totalH = cardPadY * 2;
+    parsedParas.forEach((p, i) => {
+      const lh = p.isFirst ? lineH_title : lineH_body;
+      totalH += p.lines.filter(l => l !== "").length * lh;
+      if (i < parsedParas.length - 1) totalH += paraGap;
+    });
+    totalH = Math.max(totalH, 220);
 
-    // 각 줄 자동 줄바꿈
-    const allLines: string[] = [];
-    for (const line of inputLines) {
-      ctx.font = `bold ${fontSize}px ${fontFamily}`;
-      if (ctx.measureText(line).width <= maxWidth) {
-        allLines.push(line);
-      } else {
-        let cur = "";
-        for (const ch of [...line]) {
-          const test = cur + ch;
-          if (ctx.measureText(test).width > maxWidth && cur) {
-            allLines.push(cur); cur = ch;
-          } else { cur = test; }
-        }
-        if (cur) allLines.push(cur);
-      }
-    }
+    // 카드 Y 위치: 이미지 중하단
+    const cardY = Math.min(H * 0.44, H - totalH - 80);
 
-    // 텍스트 블록을 이미지 하단 25% 영역에 배치 (잘리지 않도록)
-    const totalTextH = allLines.length * lineHeight;
-    const maxStartY = H - 80 - totalTextH;   // 하단 여백 80
-    const idealCenterY = H * 0.78;
-    const blockCenterY = Math.min(idealCenterY, maxStartY + totalTextH / 2);
-    const startY = Math.max(H * 0.55, blockCenterY - totalTextH / 2 + lineHeight / 2);
+    // ── 반투명 흰색 카드 (frosted glass) ──
+    const radius = 32;
+    ctx.fillStyle = "rgba(255,255,255,0.82)";
+    ctx.beginPath();
+    ctx.moveTo(cardX + radius, cardY);
+    ctx.lineTo(cardX + cardW - radius, cardY);
+    ctx.quadraticCurveTo(cardX + cardW, cardY, cardX + cardW, cardY + radius);
+    ctx.lineTo(cardX + cardW, cardY + totalH - radius);
+    ctx.quadraticCurveTo(cardX + cardW, cardY + totalH, cardX + cardW - radius, cardY + totalH);
+    ctx.lineTo(cardX + radius, cardY + totalH);
+    ctx.quadraticCurveTo(cardX, cardY + totalH, cardX, cardY + totalH - radius);
+    ctx.lineTo(cardX, cardY + radius);
+    ctx.quadraticCurveTo(cardX, cardY, cardX + radius, cardY);
+    ctx.closePath();
+    ctx.fill();
+
+    // 카드 상단 녹색 포인트 바
+    ctx.fillStyle = "rgba(100,160,100,0.70)";
+    ctx.beginPath();
+    ctx.moveTo(cardX + radius, cardY);
+    ctx.lineTo(cardX + cardW - radius, cardY);
+    ctx.quadraticCurveTo(cardX + cardW, cardY, cardX + cardW, cardY + radius);
+    ctx.lineTo(cardX + cardW, cardY + 8);
+    ctx.lineTo(cardX, cardY + 8);
+    ctx.lineTo(cardX, cardY + radius);
+    ctx.quadraticCurveTo(cardX, cardY, cardX + radius, cardY);
+    ctx.closePath();
+    ctx.fill();
+
+    // ── 텍스트 렌더링 ──
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
+    ctx.shadowColor = "rgba(0,0,0,0)";
+
+    let curY = cardY + cardPadY;
+    const textX = cardX + cardPadX;
+
+    parsedParas.forEach((para, pi) => {
+      const lh = para.isFirst ? lineH_title : lineH_body;
+      const fs = para.isFirst ? titleFontSize : bodyFontSize;
+
+      para.lines.forEach((line, li) => {
+        if (!line.trim()) { curY += lh * 0.5; return; }
+
+        const isBold = para.isFirst || li === 0;
+        ctx.font = `${isBold ? "bold" : "normal"} ${fs}px ${fontFamily}`;
+        ctx.fillStyle = para.isFirst ? "#2a5c2a" : "#2d2d2d";
+        ctx.fillText(line, textX, curY);
+        curY += lh;
+      });
+
+      if (pi < parsedParas.length - 1) curY += paraGap;
+    });
+
+    // ── 하단 장식 ──
+    ctx.textAlign = "center";
+    ctx.font = `normal 24px ${fontFamily}`;
+    ctx.fillStyle = "rgba(100,140,100,0.55)";
+    ctx.fillText("🌿", W / 2, cardY + totalH + 22);
+
+    return `data:image/jpeg;base64,${canvas.toBuffer("image/jpeg", { quality: 0.93 }).toString("base64")}`;
+  } catch (err) {
+    console.error("[canvas] addQuoteOverlayToBase64 실패:", err);
+    return imageBase64;
+  }
+}
 
     // ── 황금 장식선 (위) ──
     const decoY = startY - lineHeight * 1.1;

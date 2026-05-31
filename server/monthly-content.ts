@@ -174,9 +174,9 @@ async function generateBgImage(monthNum: number): Promise<string | null> {
 
 // ── 캔버스 텍스트 오버레이 폴백 ──────────────────────────────────────────────
 
-export async function applyQuoteToImage(imageBase64: string, quote: string): Promise<string> {
+export async function applyQuoteToImage(imageBase64: string, quote: string, fullText?: string): Promise<string> {
   const { addQuoteOverlayToBase64 } = await import("./scripture-canvas");
-  return addQuoteOverlayToBase64(imageBase64, quote);
+  return addQuoteOverlayToBase64(imageBase64, quote, fullText);
 }
 
 // ── 메인 생성 함수 ─────────────────────────────────────────────────────────────
@@ -287,7 +287,7 @@ quote: "지나간 날보다\\n다가올 날이 더 따뜻하길\\n당신의 ${mo
   // imageBase64: gpt-image-1 성공 → 사용, 실패 → 캔버스 오버레이 폴백
   let imageBase64: string | null = designedImage;
   if (!imageBase64 && rawImageBase64) {
-    try { imageBase64 = await applyQuoteToImage(rawImageBase64, styles[0].quote); }
+    try { imageBase64 = await applyQuoteToImage(rawImageBase64, styles[0].quote, styles[0].fullText); }
     catch { imageBase64 = rawImageBase64; }
   }
 

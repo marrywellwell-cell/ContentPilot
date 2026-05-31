@@ -128,7 +128,7 @@ export default function MonthlyHopeContent() {
     onError: (e: Error) => toast({ title: "생성 실패", description: e.message, variant: "destructive" }),
   });
 
-  // 스타일 전환 → 캔버스 오버레이 (rawImageBase64에 quote 텍스트 적용, 빠름)
+  // 스타일 전환 → 캔버스 오버레이 (rawImageBase64 + fullText 전체 전달)
   const applyStyleMutation = useMutation({
     mutationFn: (styleId: string) => {
       const style = generated!.styles.find(s => s.id === styleId)!;
@@ -136,7 +136,7 @@ export default function MonthlyHopeContent() {
       if (!bg) throw new Error("배경 이미지가 없습니다. 전체 재생성을 눌러주세요.");
       return apiRequest("/api/monthly-content/apply-text", {
         method: "POST",
-        body: JSON.stringify({ imageBase64: bg, quote: style.quote }),
+        body: JSON.stringify({ imageBase64: bg, quote: style.quote, fullText: style.fullText }),
       }) as Promise<{ imageBase64: string }>;
     },
     onSuccess: (data, styleId) => {
