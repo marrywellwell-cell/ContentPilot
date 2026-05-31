@@ -1381,16 +1381,33 @@ Solution: ${brandAnalysis.solution || "없음"}`;
     }
   });
 
-  // 글귀 수정 후 이미지 재적용
+  // 스타일 선택 → gpt-image-1 디자인 이미지 생성
   app.post("/api/monthly-content/apply-text", isAuthenticated, async (req: any, res) => {
     try {
-      const { applyQuoteToImage } = await import("./monthly-content");
-      const { imageBase64, quote } = req.body;
-      if (!imageBase64 || !quote) return res.status(400).json({ error: "imageBase64와 quote가 필요합니다." });
-      const result = await applyQuoteToImage(imageBase64, quote);
+      const { generateDesignedImage, applyQuoteToImage } = await import("./monthly-content");
+      const { imageBase64, quote, style, month } = req.body;
+      if (!quote) return res.status(400).json({ error: "quote가 필요합니다." });
+
+      // month 파싱
+      const date = month ? new Date(`${month}-01`) : new Date();
+      const monthNum = date.getMonth() + 1;
+      const year = date.getFullYear();
+
+      // style 객체가 있으면 gpt-image-1로 디자인 이미지 생성
+      let result: string | null = null;
+      if (style?.fullText) {
+        result = await generateDesignedImage(monthNum, year, style);
+      }
+
+      // 폴백: 캔버스 오버레이
+      if (!result && imageBase64) {
+        result = await applyQuoteToImage(imageBase64, quote);
+      }
+
+      if (!result) return res.status(500).json({ error: "이미지 생성 실패" });
       res.json({ imageBase64: result });
     } catch (error: any) {
-      console.error("[monthly-content] 텍스트 적용 오류:", error);
+      console.error("[monthly-content] 이미지 생성 오류:", error);
       res.status(500).json({ error: error.message });
     }
   });

@@ -1,6 +1,6 @@
 /**
  * monthly-content.ts
- * 월간 희망 콘텐츠 — 5가지 스타일 글귀 생성 + 이미지 오버레이
+ * 월간 희망 콘텐츠 — 5가지 스타일 글귀 + gpt-image-1 고급 디자인 이미지
  */
 
 import OpenAI from "openai";
@@ -12,31 +12,47 @@ function getOpenAI() {
 
 // ── 월별 테마 ─────────────────────────────────────────────────────────────────
 
-const MONTH_THEMES: Record<number, { season: string; keywords: string; imagePrompt: string }> = {
+const MONTH_THEMES: Record<number, {
+  season: string; keywords: string;
+  bgPrompt: string;   // 배경 이미지용 (Pollinations 폴백)
+  colorPalette: string; // 텍스트 컬러 힌트
+}> = {
   1:  { season: "새해·겨울",    keywords: "새해, 새 시작, 희망, 결심",
-        imagePrompt: "Ethereal snowy mountain at golden sunrise, soft blue and gold tones, peaceful dawn, premium landscape photography, vertical" },
+        bgPrompt: "Snowy mountain golden sunrise, soft blue gold tones",
+        colorPalette: "icy blue and silver, soft white tones" },
   2:  { season: "입춘·봄 준비", keywords: "따뜻함, 사랑, 기대, 설렘",
-        imagePrompt: "Delicate spring buds on branches with soft pink bokeh sky, warm pastel tones, fine art photography, vertical" },
+        bgPrompt: "Spring buds pink bokeh sky, pastel warm tones",
+        colorPalette: "soft pink and peach tones" },
   3:  { season: "봄",           keywords: "새 시작, 성장, 설렘, 피어남",
-        imagePrompt: "Lush spring meadow with wildflowers, soft golden morning light, dreamy depth of field, premium nature photography, vertical" },
+        bgPrompt: "Spring meadow wildflowers golden morning light",
+        colorPalette: "fresh green and soft yellow tones" },
   4:  { season: "벚꽃",         keywords: "아름다움, 변화, 꽃피움, 순간",
-        imagePrompt: "Cherry blossom avenue with falling petals, soft pink bokeh, magical spring morning light, luxury aesthetic, vertical" },
+        bgPrompt: "Cherry blossom avenue falling petals pink bokeh",
+        colorPalette: "cherry blossom pink and soft rose tones" },
   5:  { season: "가정의 달",    keywords: "감사, 사랑, 가족, 소중함, 행복",
-        imagePrompt: "Lush green garden with blooming roses at golden hour, warm soft light, fine art nature photography, vertical" },
+        bgPrompt: "Green garden blooming roses golden hour, warm light",
+        colorPalette: "warm rose gold and soft green tones" },
   6:  { season: "초여름",       keywords: "도전, 열정, 성장, 에너지, 기회",
-        imagePrompt: "Stunning green summer field under dramatic sky at sunset, vibrant yet soft tones, editorial photography, vertical" },
+        bgPrompt: "Bright summer window scene, white flowers in ceramic vase, ocean view, blue sky",
+        colorPalette: "sage green (#6B8F47) and soft sky blue" },
   7:  { season: "여름",         keywords: "자유, 열정, 빛, 에너지, 도전",
-        imagePrompt: "Golden ocean at sunset with soft light reflection, summer warmth, luxury travel photography, vertical" },
+        bgPrompt: "Ocean sunset golden reflection, summer warmth beach",
+        colorPalette: "warm coral and golden yellow tones" },
   8:  { season: "한여름",       keywords: "자유, 추억, 도전, 긍정, 빛남",
-        imagePrompt: "Sunflower field at magic hour, warm golden light flooding through flowers, dreamy bokeh, premium photography, vertical" },
+        bgPrompt: "Sunflower field magic hour, golden light bokeh",
+        colorPalette: "sunflower yellow and warm amber tones" },
   9:  { season: "초가을·추석",  keywords: "풍성함, 감사, 수확, 나눔",
-        imagePrompt: "Golden autumn harvest field at sunrise, warm amber tones, peaceful Korean countryside, fine art photography, vertical" },
+        bgPrompt: "Autumn harvest field sunrise, golden wheat, countryside",
+        colorPalette: "warm amber and harvest gold tones" },
   10: { season: "단풍·가을",    keywords: "성숙, 여유, 감사, 풍요, 깊이",
-        imagePrompt: "Dramatic autumn forest path with red maple canopy, soft mist, luxury landscape photography, vertical" },
+        bgPrompt: "Autumn maple forest path, red orange leaves, soft mist",
+        colorPalette: "rich burgundy and burnt orange tones" },
   11: { season: "만추·마무리",  keywords: "돌아봄, 감사, 마무리, 따뜻함",
-        imagePrompt: "Late autumn misty lake at golden hour, still water reflection, serene contemplative mood, premium photography, vertical" },
+        bgPrompt: "Late autumn misty lake golden hour, fallen leaves reflection",
+        colorPalette: "muted teal and warm brown tones" },
   12: { season: "연말·겨울",    keywords: "마무리, 감사, 선물, 따뜻함, 새해 준비",
-        imagePrompt: "Magical winter evening with soft snow and warm golden light, cozy and hopeful atmosphere, luxury photography, vertical" },
+        bgPrompt: "Cozy winter snow warm golden light, frosted window",
+        colorPalette: "deep navy and warm gold tones" },
 };
 
 // ── 타입 ──────────────────────────────────────────────────────────────────────
@@ -44,54 +60,119 @@ const MONTH_THEMES: Record<number, { season: string; keywords: string; imageProm
 export interface QuoteStyle {
   id: string;
   label: string;
-  quote: string;   // 이미지에 들어갈 핵심 1~2줄 (짧게)
-  fullText: string; // 캡션용 전체 텍스트 (멀티 단락)
+  quote: string;    // 이미지 핵심 문장 (2~3줄)
+  fullText: string; // 캡션 전체 텍스트
 }
 
 export interface MonthlyGeneratedContent {
   styles: QuoteStyle[];
   hashtags: string[];
-  rawImageBase64: string | null;
-  imageBase64: string | null;       // 첫 번째 스타일 적용 이미지
+  rawImageBase64: string | null;   // 배경 원본 (폴백용)
+  imageBase64: string | null;      // 최종 디자인 이미지
 }
 
-// ── 이미지 생성 ───────────────────────────────────────────────────────────────
+// ── gpt-image-1 디자인 이미지 생성 ───────────────────────────────────────────
 
-async function generateMonthlyImage(monthNum: number): Promise<string | null> {
+export async function generateDesignedImage(
+  monthNum: number,
+  year: number,
+  style: QuoteStyle
+): Promise<string | null> {
   const theme = MONTH_THEMES[monthNum] || MONTH_THEMES[6];
+  const monthKo = `${monthNum}월`;
+  const monthEnMap = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  const monthEn = monthEnMap[monthNum - 1];
 
-  // 1차: Pollinations
-  try {
-    const prompt = encodeURIComponent(
-      `${theme.imagePrompt}. No people. No text overlay. No logo. Cinematic quality. Soft focus background.`
-    );
-    const seed = Math.floor(Math.random() * 9999999);
-    const res = await fetch(
-      `https://image.pollinations.ai/prompt/${prompt}?width=1080&height=1350&nologo=true&seed=${seed}&model=flux`,
-      { signal: AbortSignal.timeout(35000) }
-    );
-    if (res.ok) {
-      return `data:image/jpeg;base64,${Buffer.from(await res.arrayBuffer()).toString("base64")}`;
-    }
-  } catch (e: any) { console.warn("[monthly] Pollinations 실패:", e.message?.slice(0, 80)); }
+  // fullText를 단락별로 분리
+  const paragraphs = style.fullText
+    .split(/\n{2,}/)
+    .map(p => p.replace(/\n/g, " ").trim())
+    .filter(Boolean);
 
-  // 2차: OpenAI
+  const mainPara = paragraphs[0] || "";
+  const highlightPara = paragraphs[1] || "";
+  const lastPara = paragraphs[2] || "";
+  const signature = paragraphs[paragraphs.length - 1]?.replace(/[✨🌿☘️💚]/g, "").trim() || "당신을 응원합니다";
+
+  const prompt = `Create a beautiful Korean Instagram post image, portrait orientation (9:16 ratio, 1080x1350).
+
+BACKGROUND SCENE:
+${theme.bgPrompt}. Photorealistic, bright airy minimal aesthetic, soft natural light.
+Place nature elements (flowers, plants, foliage) on the RIGHT side of the image.
+LEFT side should be mostly clear/light for text.
+TOP area has soft sky or window with light coming through.
+
+TYPOGRAPHY LAYOUT (Korean + English text, beautifully designed):
+
+TOP-LEFT area (${theme.colorPalette}):
+- Small handwritten cursive English: "Hello,"  with tiny decorative marks (✧ or dashes)
+- Very large bold Korean text: "${monthKo}"
+- Small leaf or nature icon decoration 🌿 next to ${monthKo}
+
+BODY TEXT (dark charcoal #2D2D2D, left-aligned, readable):
+Paragraph 1 (regular weight):
+"${mainPara}"
+
+Paragraph 2 (inside a soft ${theme.colorPalette.split(" ")[0]} semi-transparent highlight box):
+"${highlightPara}"
+
+Paragraph 3 (regular weight):
+"${lastPara}"
+
+BOTTOM-LEFT:
+- Handwritten script Korean: "${signature}!"
+- Thin decorative underline below it
+
+DESIGN REQUIREMENTS:
+- Color palette: ${theme.colorPalette}, warm cream/white
+- Font style: Mix of bold display Korean font, elegant body font, handwritten cursive accents
+- Subtle decorative elements: tiny leaves ✿, hearts ♥, minimal lines
+- Text should be clearly readable on the bright background (NO dark overlay)
+- Clean, airy, premium magazine/Instagram aesthetic
+- Overall mood: warm, hopeful, elegant
+- The ${monthEn} / "${monthKo}" English mug or element may appear naturally in the scene if appropriate`;
+
   if (process.env.OPENAI_API_KEY) {
     try {
       const openai = getOpenAI();
       const res = await openai.images.generate({
-        model: "dall-e-3",
-        prompt: `${theme.imagePrompt}. No people, no text, no logo. Cinematic quality photography.`,
-        n: 1, size: "1024x1024", response_format: "b64_json",
+        model: "gpt-image-1",
+        prompt: prompt.slice(0, 32000),
+        n: 1,
+        size: "1024x1536",
+        quality: "high",
       } as any);
       const b64 = res.data?.[0]?.b64_json;
-      if (b64) return `data:image/png;base64,${b64}`;
-    } catch (e: any) { console.warn("[monthly] OpenAI 이미지 실패:", e.message?.slice(0, 80)); }
+      if (b64) {
+        console.log("[monthly] gpt-image-1 디자인 이미지 생성 성공");
+        return `data:image/png;base64,${b64}`;
+      }
+    } catch (e: any) {
+      console.warn("[monthly] gpt-image-1 실패:", e.message?.slice(0, 120));
+    }
   }
   return null;
 }
 
-// ── 글귀 오버레이 적용 ────────────────────────────────────────────────────────
+// ── 배경 이미지 생성 (Pollinations 폴백) ─────────────────────────────────────
+
+async function generateBgImage(monthNum: number): Promise<string | null> {
+  const theme = MONTH_THEMES[monthNum] || MONTH_THEMES[6];
+  try {
+    const prompt = encodeURIComponent(
+      `${theme.bgPrompt}. No people. No text. Cinematic quality. Photorealistic. Soft light.`
+    );
+    const seed = Math.floor(Math.random() * 9999999);
+    const res = await fetch(
+      `https://image.pollinations.ai/prompt/${prompt}?width=1080&height=1350&nologo=true&seed=${seed}&model=flux`,
+      { signal: AbortSignal.timeout(30000) }
+    );
+    if (res.ok) return `data:image/jpeg;base64,${Buffer.from(await res.arrayBuffer()).toString("base64")}`;
+  } catch (e: any) { console.warn("[monthly] Pollinations 실패:", e.message?.slice(0, 60)); }
+  return null;
+}
+
+// ── 캔버스 텍스트 오버레이 폴백 ──────────────────────────────────────────────
 
 export async function applyQuoteToImage(imageBase64: string, quote: string): Promise<string> {
   const { addQuoteOverlayToBase64 } = await import("./scripture-canvas");
@@ -109,8 +190,7 @@ export async function generateMonthlyContent(monthStr?: string): Promise<Monthly
   const theme = MONTH_THEMES[monthNum] || MONTH_THEMES[6];
 
   // 1단계: 5가지 스타일 글귀 + 해시태그 병렬 생성
-  const [stylesRes, hashtagRes, rawImageBase64] = await Promise.all([
-
+  const [stylesRes, hashtagRes] = await Promise.all([
     openai.chat.completions.create({
       model: "gpt-4o-mini",
       max_tokens: 2000,
@@ -122,29 +202,29 @@ export async function generateMonthlyContent(monthStr?: string): Promise<Monthly
 ${monthLabel}(${theme.season}) 분위기에 맞는 희망·동기부여 메시지를 5가지 스타일로 생성하세요.
 키워드: ${theme.keywords}
 
-각 스타일 형식:
-- quote: 이미지에 넣을 핵심 문장 (2~3줄, 각 줄 15~25자, \\n으로 구분, 이모지 없음)
-- fullText: 인스타그램 캡션용 전체 글 (여러 단락, 이모지 포함, 감성적, 200자 내외)
+각 스타일:
+- quote: 이미지 핵심 문장 (2~3줄, 각 15~25자, \\n 구분, 이모지 없음)
+- fullText: 인스타 캡션 전체 글 (3~4 단락 \\n\\n 구분, 이모지 포함, 200자 내외)
 
 스타일 5가지:
-1. 감성형: 따뜻하고 감성적, 감정에 호소
+1. 감성형: 따뜻하고 감성적, 감정 호소
 2. 희망형: 긍정과 희망, 위로와 격려
-3. 짧은 글귀형: 임팩트 있는 한 마디, 간결하고 강렬
-4. 명언 스타일: 지혜롭고 깊이 있는 메시지, 인용구 형식
-5. 인스타 감성형: Hello/Hi + 영어 혼용, 트렌디하고 세련됨
+3. 짧은 글귀형: 임팩트 있는 한 마디, 간결·강렬
+4. 명언 스타일: 지혜롭고 깊이 있는 인용구 형식
+5. 인스타 감성형: "Hello, ${monthNum}월" 영어 혼용, 트렌디·세련
 
 JSON:
 {
   "styles": [
-    { "id": "emotional", "label": "감성형", "quote": "핵심 문장\\n2번째 줄\\n3번째 줄", "fullText": "전체 캡션..." },
-    { "id": "hopeful", "label": "희망형", "quote": "...", "fullText": "..." },
-    { "id": "short", "label": "짧은 글귀형", "quote": "...", "fullText": "..." },
-    { "id": "quote_style", "label": "명언 스타일", "quote": "...", "fullText": "..." },
-    { "id": "insta", "label": "인스타 감성형", "quote": "...", "fullText": "..." }
+    { "id":"emotional","label":"감성형","quote":"...\\n...\\n...","fullText":"..." },
+    { "id":"hopeful","label":"희망형","quote":"...","fullText":"..." },
+    { "id":"short","label":"짧은 글귀형","quote":"...","fullText":"..." },
+    { "id":"quote_style","label":"명언 스타일","quote":"...","fullText":"..." },
+    { "id":"insta","label":"인스타 감성형","quote":"...","fullText":"..." }
   ]
 }`,
         },
-        { role: "user", content: `${monthLabel} (${theme.season}) 희망 메시지 5가지 스타일을 만들어주세요.` },
+        { role: "user", content: `${monthLabel} (${theme.season}) 희망 메시지 5가지 스타일` },
       ],
     }),
 
@@ -153,30 +233,33 @@ JSON:
       max_tokens: 400,
       response_format: { type: "json_object" },
       messages: [
-        {
-          role: "system",
-          content: `인스타그램 해시태그 전문가. 정확히 20개, # 포함, 한국어 위주 영어 3~5개 혼합.
-JSON: { "hashtags": ["#태그1", ...] }`,
-        },
-        { role: "user", content: `${monthLabel} ${theme.season} 희망 동기부여 인스타그램 해시태그 20개` },
+        { role: "system", content: `인스타그램 해시태그 전문가. 20개, # 포함. JSON: { "hashtags": ["#태그1",...] }` },
+        { role: "user", content: `${monthLabel} ${theme.season} 희망 동기부여 해시태그 20개` },
       ],
     }),
-
-    generateMonthlyImage(monthNum),
   ]);
 
-  // 파싱
   const stylesData = JSON.parse(stylesRes.choices[0]?.message?.content || '{"styles":[]}');
   const styles: QuoteStyle[] = Array.isArray(stylesData.styles) ? stylesData.styles : [];
   const hashtagData = JSON.parse(hashtagRes.choices[0]?.message?.content || '{"hashtags":[]}');
   const hashtags: string[] = Array.isArray(hashtagData.hashtags) ? hashtagData.hashtags.slice(0, 20) : [];
 
-  // 첫 번째 스타일로 이미지 오버레이
+  if (styles.length === 0) return { styles, hashtags, rawImageBase64: null, imageBase64: null };
+
+  // 2단계: gpt-image-1로 디자인 이미지 생성 (1번째 스타일 기준)
   let imageBase64: string | null = null;
-  if (rawImageBase64 && styles.length > 0) {
-    try {
-      imageBase64 = await applyQuoteToImage(rawImageBase64, styles[0].quote);
-    } catch { imageBase64 = rawImageBase64; }
+  let rawImageBase64: string | null = null;
+
+  // gpt-image-1 시도
+  imageBase64 = await generateDesignedImage(monthNum, year, styles[0]);
+
+  // 폴백: Pollinations + 캔버스 오버레이
+  if (!imageBase64) {
+    rawImageBase64 = await generateBgImage(monthNum);
+    if (rawImageBase64) {
+      try { imageBase64 = await applyQuoteToImage(rawImageBase64, styles[0].quote); }
+      catch { imageBase64 = rawImageBase64; }
+    }
   }
 
   return { styles, hashtags, rawImageBase64, imageBase64 };

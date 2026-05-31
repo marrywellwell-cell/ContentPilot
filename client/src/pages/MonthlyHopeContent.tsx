@@ -109,13 +109,18 @@ export default function MonthlyHopeContent() {
     onError: (e: Error) => toast({ title: "생성 실패", description: e.message, variant: "destructive" }),
   });
 
-  // ── 스타일 선택 시 이미지 적용 ──
+  // ── 스타일 선택 시 gpt-image-1 디자인 이미지 생성 ──
   const applyStyleMutation = useMutation({
     mutationFn: (styleId: string) => {
       const style = generated!.styles.find(s => s.id === styleId)!;
       return apiRequest("/api/monthly-content/apply-text", {
         method: "POST",
-        body: JSON.stringify({ imageBase64: generated!.rawImageBase64, quote: style.quote }),
+        body: JSON.stringify({
+          imageBase64: generated!.rawImageBase64,
+          quote: style.quote,
+          style,
+          month: selectedMonth,
+        }),
       }) as Promise<{ imageBase64: string }>;
     },
     onSuccess: (data, styleId) => {
@@ -125,14 +130,14 @@ export default function MonthlyHopeContent() {
       setQuoteText(style?.quote ?? "");
       setEditingQuote(false);
     },
-    onError: (e: Error) => toast({ title: "이미지 적용 실패", description: e.message, variant: "destructive" }),
+    onError: (e: Error) => toast({ title: "이미지 생성 실패", description: e.message, variant: "destructive" }),
   });
 
-  // ── 글귀 직접 수정 후 이미지 재적용 ──
+  // ── 글귀 직접 수정 후 이미지 재적용 (캔버스 폴백) ──
   const applyEditMutation = useMutation({
     mutationFn: () => apiRequest("/api/monthly-content/apply-text", {
       method: "POST",
-      body: JSON.stringify({ imageBase64: generated!.rawImageBase64, quote: quoteText }),
+      body: JSON.stringify({ imageBase64: generated!.rawImageBase64, quote: quoteText, month: selectedMonth }),
     }) as Promise<{ imageBase64: string }>,
     onSuccess: (data) => {
       setGenerated(prev => prev ? { ...prev, imageBase64: data.imageBase64 } : prev);
@@ -329,10 +334,11 @@ export default function MonthlyHopeContent() {
             </CardHeader>
             <CardContent className="px-4 pb-4 space-y-3">
               {isApplying ? (
-                <div className="flex items-center justify-center h-64 bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-800 dark:to-slate-900 rounded-xl">
+                <div className="flex items-center justify-center h-64 bg-gradient-to-br from-amber-50 to-orange-50 dark:from-amber-950/30 dark:to-orange-950/30 rounded-xl border border-amber-100">
                   <div className="text-center space-y-2">
                     <Loader2 className="w-8 h-8 animate-spin text-amber-500 mx-auto" />
-                    <p className="text-sm text-muted-foreground">이미지 합성 중...</p>
+                    <p className="text-sm font-medium">AI 디자인 이미지 생성 중...</p>
+                    <p className="text-xs text-muted-foreground">gpt-image-1로 고급 디자인 생성 (20~40초)</p>
                   </div>
                 </div>
               ) : generated.imageBase64 ? (
