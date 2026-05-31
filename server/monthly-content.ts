@@ -192,36 +192,52 @@ export async function generateMonthlyContent(monthStr?: string): Promise<Monthly
   // 1단계: 5가지 스타일 글귀 + 해시태그 병렬 생성
   const [stylesRes, hashtagRes] = await Promise.all([
     openai.chat.completions.create({
-      model: "gpt-4o-mini",
+      model: "gpt-4o",
       max_tokens: 2000,
       response_format: { type: "json_object" },
       messages: [
         {
           role: "system",
           content: `당신은 한국 최고의 인스타그램 감성 카피라이터입니다.
-${monthLabel}(${theme.season}) 분위기에 맞는 희망·동기부여 메시지를 5가지 스타일로 생성하세요.
+${monthLabel}(${theme.season}) 희망·동기부여 메시지를 5가지 스타일로 생성하세요.
 키워드: ${theme.keywords}
 
-각 스타일의 fullText는 아래 규칙을 반드시 따르세요:
-- 첫 줄: **볼드체** 제목 문장 (${monthNum}월 언급 포함)
-- 본문: 2~3개 단락, 각 단락은 빈 줄(\\n\\n)로 구분
-- 마지막 줄: **볼드체** 응원 문장 + 이모지
-- 전체 길이: 150~250자
-- 줄바꿈은 \\n, 단락 구분은 \\n\\n 사용
+=== 형식 규칙 (반드시 준수) ===
+fullText 구조:
+1. 첫 줄: **굵게** 제목 문장 — ${monthNum}월 직접 언급, 인상적인 한 문장
+2. 본문: 2~3개 단락 (\\n\\n으로 구분), 각 단락 2~3줄
+3. 마지막 줄: **굵게** 응원·마무리 + 이모지
+- 전체 200~300자
+- \\n = 줄바꿈, \\n\\n = 단락 구분
 
-quote는 이미지에 넣을 핵심 2~3줄 (이모지 없음, 각 줄 15자 내외, \\n으로 구분)
+quote (이미지용): 핵심 문장 2~3줄, **굵게 없음**, 이모지 없음, \\n으로 구분, 각 줄 12~20자
 
-스타일별 특징:
-1. 감성형: 감정에 호소, "아직 이루지 못한 것보다 앞으로가 더 많습니다" 류
-2. 희망형: 긍정·격려, "다시 시작하기 늦지 않았습니다" 류, 목표/도전 언급
-3. 짧은 글귀형: 짧고 임팩트 있는 한 마디 중심, "천천히 가도 괜찮습니다" 류
-4. 명언 스타일: **"인용구 형식"** 따옴표 포함, 깊이 있는 메시지
-5. 인스타 감성형: **Hello, June 🌿** 영어 혼용, 트렌디·세련, "지나간 날 후회 말고" 류
+=== 스타일별 예시 (이 품질과 구조로 생성) ===
 
-JSON:
+[감성형 예시]
+fullText: "**${monthNum}월의 첫날입니다.**\\n아직 이루지 못한 것보다\\n앞으로 이루어질 것이 더 많습니다.\\n\\n새로운 한 달,\\n새로운 기회,\\n새로운 나를 기대해 보세요.\\n\\n**당신의 ${monthNum}월을 응원합니다. 🌿**"
+quote: "${monthNum}월의 첫날,\\n새로운 기회를 만나세요\\n앞으로가 더 많습니다"
+
+[희망형 예시]
+fullText: "**${monthNum}월은 다시 시작하기에 늦지 않은 시간입니다.**\\n목표를 잊었어도 괜찮고,\\n잠시 멈춰 있었어도 괜찮습니다.\\n\\n오늘의 작은 한 걸음이\\n내일의 큰 변화를 만듭니다.\\n\\n**당신의 ${monthNum}월이 빛나길 바랍니다. ✨**"
+quote: "다시 시작하기에\\n늦지 않은 시간입니다\\n오늘의 한 걸음이 변화를 만듭니다"
+
+[짧은 글귀형 예시]
+fullText: "**${monthNum}월은 새로운 기회가 피어나는 계절입니다.**\\n\\n천천히 가도 괜찮습니다.\\n멈추지만 않는다면\\n당신은 이미 성장하고 있습니다.\\n\\n🌱 행복한 ${monthNum}월 되세요."
+quote: "천천히 가도 괜찮습니다\\n멈추지만 않는다면\\n당신은 이미 성장 중입니다"
+
+[명언 스타일 예시]
+fullText: "**\\"어제보다 조금 더 나아진 오늘이면 충분합니다.\\"**\\n\\n완벽함보다 꾸준함을,\\n결과보다 성장을 선택하는 ${monthNum}월이 되길 바랍니다.\\n\\n☘️ 당신의 모든 도전을 응원합니다."
+quote: "어제보다 조금 더 나아진\\n오늘이면 충분합니다\\n꾸준함이 완벽을 이깁니다"
+
+[인스타 감성형 예시]
+fullText: "**Hello, ${monthNum === 6 ? "June" : monthNum === 1 ? "January" : monthNum === 12 ? "December" : monthNum + "월"} 🌿**\\n\\n지나간 날들을 후회하지 말고,\\n다가올 날들을 기대하세요.\\n\\n새로운 시작은\\n언제나 오늘로부터 시작됩니다.\\n\\n**당신의 ${monthNum}월이 따뜻한 행복과 좋은 기회로 가득하길 바랍니다. ✨**"
+quote: "지나간 날 후회하지 말고\\n다가올 날들을 기대하세요\\n새로운 시작은 오늘부터"
+
+=== 출력 JSON ===
 {
   "styles": [
-    { "id":"emotional","label":"감성형","quote":"핵심문장\\n두번째줄\\n세번째줄","fullText":"**${monthNum}월의 첫날입니다.**\\n본문...\\n\\n본문2...\\n\\n**응원 문장. 🌿**" },
+    { "id":"emotional","label":"감성형","quote":"...","fullText":"..." },
     { "id":"hopeful","label":"희망형","quote":"...","fullText":"..." },
     { "id":"short","label":"짧은 글귀형","quote":"...","fullText":"..." },
     { "id":"quote_style","label":"명언 스타일","quote":"...","fullText":"..." },
@@ -229,7 +245,7 @@ JSON:
   ]
 }`,
         },
-        { role: "user", content: `${monthLabel} (${theme.season}) 희망 동기부여 메시지 5가지 스타일 생성` },
+        { role: "user", content: `${monthLabel} (${theme.season}) 키워드: ${theme.keywords} — 위 예시 품질과 구조로 5가지 스타일 생성` },
       ],
     }),
 
