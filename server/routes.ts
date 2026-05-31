@@ -1372,10 +1372,25 @@ Solution: ${brandAnalysis.solution || "없음"}`;
   app.post("/api/monthly-content/generate", isAuthenticated, async (req: any, res) => {
     try {
       const { generateMonthlyContent } = await import("./monthly-content");
-      const result = await generateMonthlyContent();
+      const { month } = req.body;
+      const result = await generateMonthlyContent(month);
       res.json(result);
     } catch (error: any) {
       console.error("[monthly-content] 생성 오류:", error);
+      res.status(500).json({ error: error.message });
+    }
+  });
+
+  // 글귀 수정 후 이미지 재적용
+  app.post("/api/monthly-content/apply-text", isAuthenticated, async (req: any, res) => {
+    try {
+      const { applyQuoteToImage } = await import("./monthly-content");
+      const { imageBase64, quote } = req.body;
+      if (!imageBase64 || !quote) return res.status(400).json({ error: "imageBase64와 quote가 필요합니다." });
+      const result = await applyQuoteToImage(imageBase64, quote);
+      res.json({ imageBase64: result });
+    } catch (error: any) {
+      console.error("[monthly-content] 텍스트 적용 오류:", error);
       res.status(500).json({ error: error.message });
     }
   });
@@ -1387,7 +1402,7 @@ Solution: ${brandAnalysis.solution || "없음"}`;
       const { quote, caption, hashtags, imageBase64, month } = req.body;
       if (!quote) return res.status(400).json({ error: "quote가 필요합니다." });
 
-      const currentMonth = month || new Date().toISOString().slice(0, 7); // "2025-06"
+      const currentMonth = month || new Date().toISOString().slice(0, 7);
       const saved = await storage.createMonthlyContent({
         userId,
         month: currentMonth,

@@ -6,16 +6,21 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
 import {
   Sparkles, RefreshCw, Download, Copy, Check, Save,
   Loader2, Image as ImageIcon, Hash, MessageSquare, Quote,
-  Trash2, Calendar,
+  Trash2, Calendar, Edit2, CheckCircle,
 } from "lucide-react";
 
 interface GeneratedContent {
   quote: string;
   caption: string;
   hashtags: string[];
+  rawImageBase64: string | null;
   imageBase64: string | null;
 }
 
@@ -30,64 +35,77 @@ interface SavedContent {
   createdAt: string;
 }
 
+const MONTHS = Array.from({ length: 12 }, (_, i) => {
+  const now = new Date();
+  const d = new Date(now.getFullYear(), now.getMonth() + i - 1, 1);
+  const value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+  const label = `${d.getFullYear()}년 ${d.getMonth() + 1}월`;
+  return { value, label };
+});
+
+const MONTH_SEASON: Record<number, string> = {
+  1:"❄️ 새해·겨울", 2:"🌱 입춘·봄준비", 3:"🌸 봄", 4:"🌷 벚꽃", 5:"🌿 가정의달",
+  6:"☀️ 초여름", 7:"🌊 여름", 8:"🌻 한여름", 9:"🍂 초가을", 10:"🍁 단풍",
+  11:"🌫️ 만추", 12:"⛄ 연말·겨울",
+};
+
 export default function MonthlyHopeContent() {
   const { toast } = useToast();
+  const now = new Date();
+  const defaultMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+
+  const [selectedMonth, setSelectedMonth] = useState(defaultMonth);
   const [generated, setGenerated] = useState<GeneratedContent | null>(null);
+  const [editingQuote, setEditingQuote] = useState(false);
+  const [quoteText, setQuoteText] = useState("");
   const [copiedField, setCopiedField] = useState<string | null>(null);
 
-  const currentMonth = new Date().toLocaleDateString("ko-KR", { year: "numeric", month: "long" });
+  const monthNum = parseInt(selectedMonth.split("-")[1]);
+  const seasonLabel = MONTH_SEASON[monthNum] || "";
 
-  // 저장된 목록 조회
-  const savedQuery = useQuery<SavedContent[]>({
-    queryKey: ["/api/monthly-content"],
-  });
+  // 저장된 목록
+  const savedQuery = useQuery<SavedContent[]>({ queryKey: ["/api/monthly-content"] });
 
   // 전체 생성
   const generateMutation = useMutation({
-    mutationFn: () => apiRequest("/api/monthly-content/generate", { method: "POST" }) as Promise<GeneratedContent>,
+    mutationFn: () => apiRequest("/api/monthly-content/generate", {
+      method: "POST",
+      body: JSON.stringify({ month: selectedMonth }),
+    }) as Promise<GeneratedContent>,
     onSuccess: (data) => {
       setGenerated(data);
+      setQuoteText(data.quote);
+      setEditingQuote(false);
       toast({ title: "콘텐츠 생성 완료!" });
     },
     onError: (e: Error) => toast({ title: "생성 실패", description: e.message, variant: "destructive" }),
   });
 
-  // 글귀만 재생성
-  const regenQuoteMutation = useMutation({
-    mutationFn: () => apiRequest("/api/monthly-content/generate", { method: "POST" }) as Promise<GeneratedContent>,
+  // 글귀 수정 후 이미지 재적용
+  const applyTextMutation = useMutation({
+    mutationFn: () => apiRequest("/api/monthly-content/apply-text", {
+      method: "POST",
+      body: JSON.stringify({ imageBase64: generated!.rawImageBase64, quote: quoteText }),
+    }) as Promise<{ imageBase64: string }>,
     onSuccess: (data) => {
-      setGenerated(prev => prev ? { ...prev, quote: data.quote } : data);
-      toast({ title: "글귀 재생성 완료!" });
+      setGenerated(prev => prev ? { ...prev, quote: quoteText, imageBase64: data.imageBase64 } : prev);
+      setEditingQuote(false);
+      toast({ title: "이미지 적용 완료!" });
     },
-    onError: (e: Error) => toast({ title: "재생성 실패", description: e.message, variant: "destructive" }),
+    onError: (e: Error) => toast({ title: "적용 실패", description: e.message, variant: "destructive" }),
   });
 
-  // 캡션만 재생성
-  const regenCaptionMutation = useMutation({
-    mutationFn: () => apiRequest("/api/monthly-content/generate", { method: "POST" }) as Promise<GeneratedContent>,
+  // 재생성 (전체)
+  const regenMutation = useMutation({
+    mutationFn: () => apiRequest("/api/monthly-content/generate", {
+      method: "POST",
+      body: JSON.stringify({ month: selectedMonth }),
+    }) as Promise<GeneratedContent>,
     onSuccess: (data) => {
-      setGenerated(prev => prev ? { ...prev, caption: data.caption } : data);
-      toast({ title: "캡션 재생성 완료!" });
-    },
-    onError: (e: Error) => toast({ title: "재생성 실패", description: e.message, variant: "destructive" }),
-  });
-
-  // 해시태그만 재생성
-  const regenHashtagMutation = useMutation({
-    mutationFn: () => apiRequest("/api/monthly-content/generate", { method: "POST" }) as Promise<GeneratedContent>,
-    onSuccess: (data) => {
-      setGenerated(prev => prev ? { ...prev, hashtags: data.hashtags } : data);
-      toast({ title: "해시태그 재생성 완료!" });
-    },
-    onError: (e: Error) => toast({ title: "재생성 실패", description: e.message, variant: "destructive" }),
-  });
-
-  // 이미지만 재생성
-  const regenImageMutation = useMutation({
-    mutationFn: () => apiRequest("/api/monthly-content/generate", { method: "POST" }) as Promise<GeneratedContent>,
-    onSuccess: (data) => {
-      setGenerated(prev => prev ? { ...prev, imageBase64: data.imageBase64 } : data);
-      toast({ title: "이미지 재생성 완료!" });
+      setGenerated(data);
+      setQuoteText(data.quote);
+      setEditingQuote(false);
+      toast({ title: "재생성 완료!" });
     },
     onError: (e: Error) => toast({ title: "재생성 실패", description: e.message, variant: "destructive" }),
   });
@@ -97,6 +115,7 @@ export default function MonthlyHopeContent() {
     mutationFn: () => apiRequest("/api/monthly-content/save", {
       method: "POST",
       body: JSON.stringify({
+        month: selectedMonth,
         quote: generated!.quote,
         caption: generated!.caption,
         hashtags: generated!.hashtags,
@@ -122,207 +141,220 @@ export default function MonthlyHopeContent() {
   const copy = async (text: string, field: string) => {
     await navigator.clipboard.writeText(text);
     setCopiedField(field);
-    toast({ title: "복사 완료!" });
     setTimeout(() => setCopiedField(null), 2000);
   };
 
-  const downloadImage = (base64: string) => {
+  const downloadImage = (base64: string, month: string) => {
     const a = document.createElement("a");
     a.href = base64;
-    a.download = `monthly-hope-${new Date().toISOString().slice(0, 7)}.jpg`;
+    a.download = `monthly-hope-${month}.jpg`;
     a.click();
   };
 
-  const isGenerating = generateMutation.isPending;
+  const isGenerating = generateMutation.isPending || regenMutation.isPending;
 
   return (
-    <div className="max-w-3xl mx-auto space-y-8">
+    <div className="max-w-2xl mx-auto space-y-6">
       {/* 헤더 */}
-      <div className="text-center space-y-2">
-        <div className="inline-flex items-center justify-center w-14 h-14 bg-gradient-to-br from-amber-400 to-orange-500 rounded-2xl mb-2">
-          <Sparkles className="w-7 h-7 text-white" />
+      <div className="text-center space-y-1">
+        <div className="inline-flex items-center justify-center w-12 h-12 bg-gradient-to-br from-amber-400 to-orange-500 rounded-2xl mb-2">
+          <Sparkles className="w-6 h-6 text-white" />
         </div>
-        <h1 className="text-3xl font-bold">월간 희망 콘텐츠</h1>
-        <p className="text-muted-foreground">{currentMonth} · AI가 희망 글귀와 인스타그램 콘텐츠를 자동 생성합니다</p>
+        <h1 className="text-2xl font-bold">월간 희망 콘텐츠</h1>
+        <p className="text-sm text-muted-foreground">월을 선택하면 그 달에 맞는 글귀·이미지·캡션을 생성합니다</p>
       </div>
 
-      {/* 생성 버튼 */}
-      {!generated && (
-        <Card className="border-2 border-dashed border-amber-200 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-950/20">
-          <CardContent className="flex flex-col items-center justify-center py-16 gap-4">
-            <p className="text-muted-foreground text-sm">버튼을 누르면 글귀 · 이미지 · 캡션 · 해시태그가 한번에 생성됩니다</p>
-            <Button
-              size="lg"
-              className="gap-2 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white px-8"
-              onClick={() => generateMutation.mutate()}
-              disabled={isGenerating}
-            >
-              {isGenerating
-                ? <><Loader2 className="w-5 h-5 animate-spin" />AI 생성 중...</>
-                : <><Sparkles className="w-5 h-5" />콘텐츠 생성하기</>
-              }
-            </Button>
-          </CardContent>
-        </Card>
-      )}
+      {/* 월 선택 + 생성 */}
+      <Card>
+        <CardContent className="pt-5 space-y-4">
+          <div className="space-y-2">
+            <label className="text-sm font-medium flex items-center gap-2">
+              <Calendar className="w-4 h-4 text-amber-500" />월 선택
+            </label>
+            <Select value={selectedMonth} onValueChange={setSelectedMonth}>
+              <SelectTrigger className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {MONTHS.map((m) => (
+                  <SelectItem key={m.value} value={m.value}>
+                    {m.label} &nbsp;
+                    <span className="text-muted-foreground text-xs">
+                      {MONTH_SEASON[parseInt(m.value.split("-")[1])]}
+                    </span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {selectedMonth && (
+              <p className="text-xs text-amber-600 dark:text-amber-400">
+                {seasonLabel} 테마로 생성됩니다
+              </p>
+            )}
+          </div>
+
+          <Button
+            className="w-full gap-2 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white"
+            size="lg"
+            onClick={() => generateMutation.mutate()}
+            disabled={isGenerating}
+          >
+            {isGenerating
+              ? <><Loader2 className="w-5 h-5 animate-spin" />AI 생성 중...</>
+              : <><Sparkles className="w-5 h-5" />콘텐츠 생성하기</>
+            }
+          </Button>
+        </CardContent>
+      </Card>
 
       {/* 생성 결과 */}
       {generated && (
-        <div className="space-y-5">
+        <div className="space-y-4">
           {/* 상단 액션 */}
           <div className="flex items-center justify-between">
-            <Button variant="outline" size="sm" onClick={() => { setGenerated(null); }} className="gap-2">
-              <RefreshCw className="w-4 h-4" />새로 만들기
+            <Button variant="outline" size="sm" className="gap-1.5"
+              onClick={() => regenMutation.mutate()} disabled={isGenerating}>
+              <RefreshCw className="w-3.5 h-3.5" />전체 재생성
             </Button>
             <Button
+              className="gap-2 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white"
+              size="sm"
               onClick={() => saveMutation.mutate()}
               disabled={saveMutation.isPending}
-              className="gap-2 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white"
             >
               {saveMutation.isPending
-                ? <><Loader2 className="w-4 h-4 animate-spin" />저장 중...</>
-                : <><Save className="w-4 h-4" />저장하기</>
+                ? <><Loader2 className="w-3.5 h-3.5 animate-spin" />저장 중...</>
+                : <><Save className="w-3.5 h-3.5" />저장하기</>
               }
             </Button>
           </div>
 
-          {/* 글귀 */}
+          {/* 이미지 + 글귀 편집 */}
           <Card>
-            <CardHeader className="pb-3">
+            <CardHeader className="pb-2">
               <div className="flex items-center justify-between">
-                <CardTitle className="flex items-center gap-2 text-base">
-                  <Quote className="w-4 h-4 text-amber-500" />희망 글귀
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <ImageIcon className="w-4 h-4 text-amber-500" />
+                  이미지 <span className="text-xs font-normal text-muted-foreground">(1080×1350 · 글귀 포함)</span>
                 </CardTitle>
-                <div className="flex gap-2">
-                  <Button size="sm" variant="ghost" className="h-8 px-2"
-                    onClick={() => copy(generated.quote, "quote")}>
-                    {copiedField === "quote" ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
-                  </Button>
-                  <Button size="sm" variant="outline" className="h-8 gap-1 text-xs"
-                    onClick={() => regenQuoteMutation.mutate()}
-                    disabled={regenQuoteMutation.isPending}>
-                    {regenQuoteMutation.isPending
-                      ? <Loader2 className="w-3 h-3 animate-spin" />
-                      : <RefreshCw className="w-3 h-3" />}
-                    재생성
-                  </Button>
-                </div>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="bg-gradient-to-br from-amber-50 to-orange-50 dark:from-amber-950/30 dark:to-orange-950/30 rounded-xl p-6 border border-amber-100 dark:border-amber-900">
-                <p className="text-lg font-medium leading-relaxed text-center whitespace-pre-wrap">{generated.quote}</p>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* 이미지 */}
-          <Card>
-            <CardHeader className="pb-3">
-              <div className="flex items-center justify-between">
-                <CardTitle className="flex items-center gap-2 text-base">
-                  <ImageIcon className="w-4 h-4 text-amber-500" />인스타그램 이미지 <span className="text-xs font-normal text-muted-foreground">(1080×1350)</span>
-                </CardTitle>
-                <div className="flex gap-2">
+                <div className="flex gap-1.5">
                   {generated.imageBase64 && (
-                    <Button size="sm" variant="ghost" className="h-8 px-2 gap-1 text-xs"
-                      onClick={() => downloadImage(generated.imageBase64!)}>
+                    <Button size="sm" variant="ghost" className="h-7 px-2 gap-1 text-xs"
+                      onClick={() => downloadImage(generated.imageBase64!, selectedMonth)}>
                       <Download className="w-3.5 h-3.5" />다운로드
                     </Button>
                   )}
-                  <Button size="sm" variant="outline" className="h-8 gap-1 text-xs"
-                    onClick={() => regenImageMutation.mutate()}
-                    disabled={regenImageMutation.isPending}>
-                    {regenImageMutation.isPending
-                      ? <Loader2 className="w-3 h-3 animate-spin" />
-                      : <RefreshCw className="w-3 h-3" />}
-                    재생성
-                  </Button>
                 </div>
               </div>
             </CardHeader>
-            <CardContent>
-              {regenImageMutation.isPending ? (
-                <div className="flex items-center justify-center h-64 bg-muted rounded-xl">
-                  <div className="text-center space-y-2">
-                    <Loader2 className="w-8 h-8 animate-spin text-amber-500 mx-auto" />
-                    <p className="text-sm text-muted-foreground">이미지 생성 중...</p>
-                  </div>
-                </div>
-              ) : generated.imageBase64 ? (
+            <CardContent className="space-y-4">
+              {/* 이미지 */}
+              {generated.imageBase64 ? (
                 <div className="flex justify-center">
                   <img
                     src={generated.imageBase64}
-                    alt="생성된 희망 이미지"
-                    className="w-full max-w-xs rounded-xl shadow-md object-cover"
-                    style={{ aspectRatio: "1080/1350" }}
+                    alt="희망 이미지"
+                    className="w-full max-w-xs rounded-xl shadow-lg"
+                    style={{ aspectRatio: "1080/1350", objectFit: "cover" }}
                   />
                 </div>
               ) : (
                 <div className="flex items-center justify-center h-48 bg-muted rounded-xl border-2 border-dashed">
-                  <p className="text-sm text-muted-foreground">이미지 생성 실패 — 재생성 버튼을 눌러주세요</p>
+                  <p className="text-sm text-muted-foreground">이미지 생성 실패 — 재생성해주세요</p>
                 </div>
+              )}
+
+              {/* 글귀 편집 영역 */}
+              <div className="border rounded-lg overflow-hidden">
+                <div className="flex items-center justify-between px-3 py-2 bg-amber-50 dark:bg-amber-950/30 border-b">
+                  <span className="text-xs font-medium flex items-center gap-1.5">
+                    <Quote className="w-3.5 h-3.5 text-amber-500" />글귀 (클릭해서 수정)
+                  </span>
+                  <div className="flex gap-1.5">
+                    {!editingQuote ? (
+                      <Button size="sm" variant="ghost" className="h-6 px-2 text-xs gap-1"
+                        onClick={() => { setEditingQuote(true); setQuoteText(generated.quote); }}>
+                        <Edit2 className="w-3 h-3" />수정
+                      </Button>
+                    ) : (
+                      <>
+                        <Button size="sm" variant="ghost" className="h-6 px-2 text-xs"
+                          onClick={() => { setEditingQuote(false); setQuoteText(generated.quote); }}>
+                          취소
+                        </Button>
+                        <Button size="sm"
+                          className="h-6 px-2 text-xs gap-1 bg-amber-500 hover:bg-amber-600 text-white"
+                          onClick={() => applyTextMutation.mutate()}
+                          disabled={applyTextMutation.isPending || !generated.rawImageBase64}>
+                          {applyTextMutation.isPending
+                            ? <Loader2 className="w-3 h-3 animate-spin" />
+                            : <CheckCircle className="w-3 h-3" />}
+                          이미지 적용
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                </div>
+                {editingQuote ? (
+                  <Textarea
+                    value={quoteText}
+                    onChange={(e) => setQuoteText(e.target.value)}
+                    className="border-0 rounded-none resize-none text-sm leading-relaxed focus-visible:ring-0"
+                    rows={3}
+                    placeholder="글귀를 수정하세요 (줄바꿈 가능)"
+                  />
+                ) : (
+                  <div className="px-3 py-3 text-sm leading-relaxed font-medium whitespace-pre-wrap">
+                    {generated.quote}
+                  </div>
+                )}
+              </div>
+
+              {!generated.rawImageBase64 && editingQuote && (
+                <p className="text-xs text-muted-foreground text-center">
+                  원본 이미지가 없어 텍스트 재적용이 불가합니다. 전체 재생성해주세요.
+                </p>
               )}
             </CardContent>
           </Card>
 
           {/* 캡션 */}
           <Card>
-            <CardHeader className="pb-3">
+            <CardHeader className="pb-2">
               <div className="flex items-center justify-between">
-                <CardTitle className="flex items-center gap-2 text-base">
-                  <MessageSquare className="w-4 h-4 text-amber-500" />인스타그램 캡션
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <MessageSquare className="w-4 h-4 text-amber-500" />캡션
                 </CardTitle>
-                <div className="flex gap-2">
-                  <Button size="sm" variant="ghost" className="h-8 px-2"
-                    onClick={() => copy(generated.caption, "caption")}>
-                    {copiedField === "caption" ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
-                  </Button>
-                  <Button size="sm" variant="outline" className="h-8 gap-1 text-xs"
-                    onClick={() => regenCaptionMutation.mutate()}
-                    disabled={regenCaptionMutation.isPending}>
-                    {regenCaptionMutation.isPending
-                      ? <Loader2 className="w-3 h-3 animate-spin" />
-                      : <RefreshCw className="w-3 h-3" />}
-                    재생성
-                  </Button>
-                </div>
+                <Button size="sm" variant="ghost" className="h-7 px-2"
+                  onClick={() => copy(generated.caption, "caption")}>
+                  {copiedField === "caption" ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
+                </Button>
               </div>
             </CardHeader>
             <CardContent>
-              <div className="bg-muted rounded-lg p-4">
-                <p className="text-sm leading-relaxed whitespace-pre-wrap">{generated.caption}</p>
+              <div className="bg-muted rounded-lg p-3 text-sm leading-relaxed whitespace-pre-wrap">
+                {generated.caption}
               </div>
             </CardContent>
           </Card>
 
           {/* 해시태그 */}
           <Card>
-            <CardHeader className="pb-3">
+            <CardHeader className="pb-2">
               <div className="flex items-center justify-between">
-                <CardTitle className="flex items-center gap-2 text-base">
+                <CardTitle className="text-sm flex items-center gap-2">
                   <Hash className="w-4 h-4 text-amber-500" />해시태그 ({generated.hashtags.length}개)
                 </CardTitle>
-                <div className="flex gap-2">
-                  <Button size="sm" variant="ghost" className="h-8 px-2"
-                    onClick={() => copy(generated.hashtags.join(" "), "hashtags")}>
-                    {copiedField === "hashtags" ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
-                  </Button>
-                  <Button size="sm" variant="outline" className="h-8 gap-1 text-xs"
-                    onClick={() => regenHashtagMutation.mutate()}
-                    disabled={regenHashtagMutation.isPending}>
-                    {regenHashtagMutation.isPending
-                      ? <Loader2 className="w-3 h-3 animate-spin" />
-                      : <RefreshCw className="w-3 h-3" />}
-                    재생성
-                  </Button>
-                </div>
+                <Button size="sm" variant="ghost" className="h-7 px-2"
+                  onClick={() => copy(generated.hashtags.join(" "), "hashtags")}>
+                  {copiedField === "hashtags" ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
+                </Button>
               </div>
             </CardHeader>
             <CardContent>
               <div className="flex flex-wrap gap-1.5">
                 {generated.hashtags.map((tag, i) => (
-                  <Badge key={i} variant="secondary" className="text-xs cursor-pointer hover:bg-amber-100 dark:hover:bg-amber-900"
+                  <Badge key={i} variant="secondary" className="text-xs cursor-pointer hover:bg-amber-100 dark:hover:bg-amber-900/40"
                     onClick={() => copy(tag, `tag-${i}`)}>
                     {tag.startsWith("#") ? tag : `#${tag}`}
                   </Badge>
@@ -333,10 +365,7 @@ export default function MonthlyHopeContent() {
 
           {/* 전체 복사 */}
           <Button variant="outline" className="w-full gap-2"
-            onClick={() => copy(
-              `${generated.quote}\n\n${generated.caption}\n\n${generated.hashtags.join(" ")}`,
-              "all"
-            )}>
+            onClick={() => copy(`${generated.quote}\n\n${generated.caption}\n\n${generated.hashtags.join(" ")}`, "all")}>
             {copiedField === "all" ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
             전체 복사 (글귀 + 캡션 + 해시태그)
           </Button>
@@ -347,52 +376,51 @@ export default function MonthlyHopeContent() {
       {(savedQuery.data?.length ?? 0) > 0 && (
         <>
           <Separator />
-          <div className="space-y-4">
-            <h2 className="text-lg font-semibold flex items-center gap-2">
-              <Calendar className="w-5 h-5 text-amber-500" />저장된 콘텐츠
+          <div className="space-y-3">
+            <h2 className="text-base font-semibold flex items-center gap-2">
+              <Calendar className="w-4 h-4 text-amber-500" />저장된 콘텐츠
             </h2>
-            <div className="grid gap-4">
-              {savedQuery.data?.map((item) => (
-                <Card key={item.id} className="overflow-hidden">
-                  <CardContent className="p-4">
-                    <div className="flex gap-4">
-                      {item.imageBase64 ? (
-                        <img src={item.imageBase64} alt="희망 이미지" className="w-20 h-20 rounded-lg object-cover flex-shrink-0" />
-                      ) : (
-                        <div className="w-20 h-20 rounded-lg bg-gradient-to-br from-amber-100 to-orange-200 flex-shrink-0 flex items-center justify-center">
-                          <ImageIcon className="w-8 h-8 text-amber-400" />
-                        </div>
-                      )}
-                      <div className="flex-1 min-w-0 space-y-1">
-                        <div className="flex items-center gap-2">
-                          <Badge variant="outline" className="text-xs">{item.month}</Badge>
-                          <span className="text-xs text-muted-foreground">
-                            {new Date(item.createdAt).toLocaleDateString("ko-KR")}
-                          </span>
-                        </div>
-                        <p className="text-sm font-medium leading-relaxed whitespace-pre-wrap line-clamp-2">{item.quote}</p>
-                        <p className="text-xs text-muted-foreground line-clamp-1">{item.caption}</p>
+            {savedQuery.data?.map((item) => (
+              <Card key={item.id}>
+                <CardContent className="p-4">
+                  <div className="flex gap-3">
+                    {item.imageBase64 ? (
+                      <img src={item.imageBase64} alt="희망 이미지"
+                        className="w-16 h-20 rounded-lg object-cover flex-shrink-0" />
+                    ) : (
+                      <div className="w-16 h-20 rounded-lg bg-gradient-to-br from-amber-100 to-orange-200 flex-shrink-0 flex items-center justify-center">
+                        <ImageIcon className="w-6 h-6 text-amber-400" />
                       </div>
-                      <div className="flex flex-col gap-1 flex-shrink-0">
-                        <Button size="sm" variant="ghost" className="h-7 px-2"
-                          onClick={() => copy(`${item.quote}\n\n${item.caption}\n\n${item.hashtags.join(" ")}`, `saved-${item.id}`)}>
-                          {copiedField === `saved-${item.id}` ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
-                        </Button>
-                        {item.imageBase64 && (
-                          <Button size="sm" variant="ghost" className="h-7 px-2" onClick={() => downloadImage(item.imageBase64!)}>
-                            <Download className="w-3.5 h-3.5" />
-                          </Button>
-                        )}
-                        <Button size="sm" variant="ghost" className="h-7 px-2"
-                          onClick={() => deleteMutation.mutate(item.id)}>
-                          <Trash2 className="w-3.5 h-3.5 text-destructive" />
-                        </Button>
+                    )}
+                    <div className="flex-1 min-w-0 space-y-1">
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className="text-xs">{item.month}</Badge>
+                        <span className="text-xs text-muted-foreground">
+                          {MONTH_SEASON[parseInt(item.month.split("-")[1])]}
+                        </span>
                       </div>
+                      <p className="text-sm font-medium leading-relaxed whitespace-pre-wrap line-clamp-3">{item.quote}</p>
                     </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
+                    <div className="flex flex-col gap-1 flex-shrink-0">
+                      <Button size="sm" variant="ghost" className="h-7 px-2"
+                        onClick={() => copy(`${item.quote}\n\n${item.caption}\n\n${item.hashtags?.join(" ")}`, `s-${item.id}`)}>
+                        {copiedField === `s-${item.id}` ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
+                      </Button>
+                      {item.imageBase64 && (
+                        <Button size="sm" variant="ghost" className="h-7 px-2"
+                          onClick={() => downloadImage(item.imageBase64!, item.month)}>
+                          <Download className="w-3.5 h-3.5" />
+                        </Button>
+                      )}
+                      <Button size="sm" variant="ghost" className="h-7 px-2"
+                        onClick={() => deleteMutation.mutate(item.id)}>
+                        <Trash2 className="w-3.5 h-3.5 text-destructive" />
+                      </Button>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
           </div>
         </>
       )}

@@ -338,6 +338,92 @@ export async function createInstagramSlides(
   }
 }
 
+// ── 월간 희망 글귀 오버레이 (1080×1350 인스타그램용) ─────────────────────────
+
+export async function addQuoteOverlayToBase64(
+  imageBase64: string,
+  quote: string
+): Promise<string> {
+  try {
+    await ensureFonts();
+    const { createCanvas, loadImage } = await import("canvas");
+    const W = 1080, H = 1350;
+    const canvas = createCanvas(W, H);
+    const ctx = canvas.getContext("2d") as any;
+
+    // 배경 이미지 (흰 배경 + 55% opacity로 밝게)
+    ctx.fillStyle = "#FFFFFF";
+    ctx.fillRect(0, 0, W, H);
+    const image = await loadImage(base64ToBuffer(imageBase64));
+    ctx.globalAlpha = 0.60;
+    ctx.drawImage(image, 0, 0, W, H);
+    ctx.globalAlpha = 1.0;
+
+    // 하단 그라데이션 오버레이
+    const gradH = H * 0.55;
+    const grad = ctx.createLinearGradient(0, H - gradH, 0, H);
+    grad.addColorStop(0, "rgba(0,0,0,0)");
+    grad.addColorStop(0.5, "rgba(0,0,0,0.45)");
+    grad.addColorStop(1, "rgba(0,0,0,0.72)");
+    ctx.fillStyle = grad;
+    ctx.fillRect(0, H - gradH, W, gradH);
+
+    // 글귀 텍스트 (줄바꿈 처리)
+    const maxWidth = W * 0.82;
+    const fontSize = Math.min(68, Math.max(48, Math.floor(W / (quote.length > 30 ? 18 : 14))));
+    ctx.font = `bold ${fontSize}px "NotoSansKR", serif`;
+    ctx.fillStyle = "#FFFFFF";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+
+    // 명시적 줄바꿈 + 자동 줄바꿈
+    const inputLines = quote.split("\n");
+    const allLines: string[] = [];
+    for (const line of inputLines) {
+      if (!line.trim()) { allLines.push(""); continue; }
+      const words = line.split(" ");
+      let cur = "";
+      for (const word of words) {
+        const test = cur ? `${cur} ${word}` : word;
+        if (ctx.measureText(test).width > maxWidth && cur) {
+          allLines.push(cur);
+          cur = word;
+        } else { cur = test; }
+      }
+      if (cur) allLines.push(cur);
+    }
+
+    const lineHeight = fontSize * 1.55;
+    const totalH = allLines.length * lineHeight;
+    const startY = H * 0.75 - totalH / 2 + lineHeight / 2;
+
+    // 텍스트 그림자
+    ctx.shadowColor = "rgba(0,0,0,0.5)";
+    ctx.shadowBlur = 12;
+    ctx.shadowOffsetY = 3;
+
+    for (let i = 0; i < allLines.length; i++) {
+      ctx.fillText(allLines[i], W / 2, startY + i * lineHeight);
+    }
+
+    // 장식선
+    ctx.shadowBlur = 0;
+    ctx.shadowOffsetY = 0;
+    const lineY = startY - lineHeight * 0.8;
+    ctx.strokeStyle = "rgba(255,255,255,0.6)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(W * 0.3, lineY);
+    ctx.lineTo(W * 0.7, lineY);
+    ctx.stroke();
+
+    return `data:image/jpeg;base64,${canvas.toBuffer("image/jpeg", { quality: 0.92 }).toString("base64")}`;
+  } catch (err) {
+    console.error("[canvas] addQuoteOverlayToBase64 실패:", err);
+    return imageBase64;
+  }
+}
+
 // ── 썸네일 유틸 ───────────────────────────────────────────────────────────────
 
 export async function createSmallThumbnail(imageBase64: string, size = 200): Promise<string> {
