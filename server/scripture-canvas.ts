@@ -388,7 +388,8 @@ function buildLines(ctx: any, text: string, maxWidth: number, fontSize: number, 
 export async function addQuoteOverlayToBase64(
   imageBase64: string,
   quote: string,
-  fullText?: string
+  fullText?: string,
+  signature?: string
 ): Promise<string> {
   try {
     await ensureFonts();
@@ -500,11 +501,25 @@ export async function addQuoteOverlayToBase64(
       if (pi < parsedParas.length - 1) curY += paraGap;
     });
 
-    // ── 하단 장식 ──
-    ctx.textAlign = "center";
-    ctx.font = `normal 24px ${fontFamily}`;
-    ctx.fillStyle = "rgba(100,140,100,0.55)";
-    ctx.fillText("🌿", W / 2, cardY + totalH + 22);
+    // ── 서명 (우측 하단, 이탤릭) ──
+    const sig = signature || "홍승빈 드림";
+    const sigFontSize = 32;
+    ctx.font = `italic ${sigFontSize}px ${fontFamily}`;
+    ctx.textAlign = "right";
+    ctx.textBaseline = "top";
+    ctx.fillStyle = "#4a7a4a";
+    ctx.shadowColor = "rgba(0,0,0,0)";
+    const sigX = cardX + cardW - cardPadX;
+    const sigY = cardY + totalH - cardPadY * 0.5 - sigFontSize;
+    ctx.fillText(sig, sigX, sigY);
+
+    // 서명 위 얇은 구분선
+    ctx.strokeStyle = "rgba(100,160,100,0.35)";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(cardX + cardW * 0.5, sigY - 12);
+    ctx.lineTo(cardX + cardW - cardPadX, sigY - 12);
+    ctx.stroke();
 
     return `data:image/jpeg;base64,${canvas.toBuffer("image/jpeg", { quality: 0.93 }).toString("base64")}`;
   } catch (err) {

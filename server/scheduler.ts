@@ -22,6 +22,49 @@ function startKeepalive() {
   console.log(`[keepalive] 14분마다 자동 핑 시작 → ${selfUrl}/health`);
 }
 
+// ── 매월 1일 자동 월간 희망 콘텐츠 생성 ─────────────────────────────────────
+
+async function autoGenerateMonthlyContent() {
+  console.log("[monthly-auto] 매월 1일 자동 생성 시작...");
+  try {
+    // 관리자 계정으로 생성 (환경변수 또는 첫 번째 관리자 사용)
+    const adminUserId = process.env.MONTHLY_AUTO_USER_ID;
+    if (!adminUserId) {
+      console.warn("[monthly-auto] MONTHLY_AUTO_USER_ID 미설정 — 자동 생성 건너뜀");
+      return;
+    }
+
+    const now = new Date();
+    const monthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+
+    const { generateMonthlyContent } = await import("./monthly-content");
+    const result = await generateMonthlyContent(monthStr);
+
+    if (result.styles.length === 0) {
+      console.warn("[monthly-auto] 스타일 생성 실패");
+      return;
+    }
+
+    // 인스타 감성형(insta) 우선, 없으면 첫 번째 스타일 저장
+    const selected = result.styles.find(s => s.id === "insta") ?? result.styles[0];
+
+    await storage.createMonthlyContent({
+      userId: adminUserId,
+      month: monthStr,
+      quote: selected.fullText,
+      caption: selected.fullText,
+      hashtags: result.hashtags,
+      imageBase64: result.imageBase64 ?? null,
+      imageUrl: null,
+      status: "draft",
+    });
+
+    console.log(`[monthly-auto] ${monthStr} 자동 생성 완료 — 스타일: ${selected.label}`);
+  } catch (e: any) {
+    console.error("[monthly-auto] 자동 생성 오류:", e.message);
+  }
+}
+
 // Check for scheduled content every minute
 export function startScheduler() {
   console.log("Starting content scheduler...");
@@ -61,6 +104,13 @@ export function startScheduler() {
       console.error("Scheduler error:", error);
     }
   });
+
+  // 매월 1일 00:01 자동 월간 희망 콘텐츠 생성
+  cron.schedule("1 0 1 * *", async () => {
+    console.log("[monthly-auto] 매월 1일 00:01 — 자동 생성 트리거");
+    await autoGenerateMonthlyContent();
+  });
+  console.log("[scheduler] 매월 1일 자동 생성 등록 완료");
 
   // Automatic YouTube channel checking - every 30 minutes
   cron.schedule("*/30 * * * *", async () => {

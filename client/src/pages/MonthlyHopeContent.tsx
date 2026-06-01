@@ -136,7 +136,7 @@ export default function MonthlyHopeContent() {
       if (!bg) throw new Error("배경 이미지가 없습니다. 전체 재생성을 눌러주세요.");
       return apiRequest("/api/monthly-content/apply-text", {
         method: "POST",
-        body: JSON.stringify({ imageBase64: bg, quote: style.quote, fullText: style.fullText }),
+        body: JSON.stringify({ imageBase64: bg, quote: style.quote, fullText: style.fullText, signature: style.signature ?? "홍승빈 드림" }),
       }) as Promise<{ imageBase64: string }>;
     },
     onSuccess: (data, styleId) => {

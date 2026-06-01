@@ -60,8 +60,10 @@ const MONTH_THEMES: Record<number, {
 export interface QuoteStyle {
   id: string;
   label: string;
-  quote: string;    // 이미지 핵심 문장 (2~3줄)
-  fullText: string; // 캡션 전체 텍스트
+  title: string;    // 제목 (Hello, N월 형식, 20자 이내)
+  quote: string;    // 이미지용 핵심 문장 (2~3줄, 서명 제외)
+  fullText: string; // 캡션 전체 (제목+본문+서명 포함)
+  signature: string; // 서명 (항상 "홍승빈 드림")
 }
 
 export interface MonthlyGeneratedContent {
@@ -174,9 +176,9 @@ async function generateBgImage(monthNum: number): Promise<string | null> {
 
 // ── 캔버스 텍스트 오버레이 폴백 ──────────────────────────────────────────────
 
-export async function applyQuoteToImage(imageBase64: string, quote: string, fullText?: string): Promise<string> {
+export async function applyQuoteToImage(imageBase64: string, quote: string, fullText?: string, signature?: string): Promise<string> {
   const { addQuoteOverlayToBase64 } = await import("./scripture-canvas");
-  return addQuoteOverlayToBase64(imageBase64, quote, fullText);
+  return addQuoteOverlayToBase64(imageBase64, quote, fullText, signature ?? "홍승빈 드림");
 }
 
 // ── 메인 생성 함수 ─────────────────────────────────────────────────────────────
@@ -198,61 +200,75 @@ export async function generateMonthlyContent(monthStr?: string): Promise<Monthly
       messages: [
         {
           role: "system",
-          content: `당신은 한국 인스타그램 감성 카피라이터입니다.
-${monthLabel}(${theme.season}) 희망 메시지를 5가지 스타일로 생성하세요.
+          content: `당신은 감성 콘텐츠 카피라이터이자 인스타그램 디자이너입니다.
+${monthLabel}(${theme.season}) 희망·위로 메시지를 5가지 스타일로 생성하세요.
 키워드: ${theme.keywords}
 
-=== 어투 규칙 (절대 준수) ===
-✅ 덕담·바람 어미만 사용: ~되세요 / ~바랍니다 / ~되길 / ~하길 / ~응원합니다 / ~기도합니다 / ~가득하길 / ~빛나길 / ~채워지길
-❌ 절대 금지: ~다 로 끝나는 선언형 문장 (예: "~입니다", "~합니다", "~있습니다", "~만듭니다")
-❌ 절대 금지: ~하라 / ~가자 / ~하자 / 명령형
-→ 모든 문장은 덕담(상대방을 위한 바람과 축복)처럼 작성
-→ 예: "빛나는 6월 되세요" / "당신의 6월을 응원합니다" / "행복이 가득하길 바랍니다"
+=== 글귀 구조 (반드시 준수) ===
+모든 스타일은 아래 3부분으로 구성:
+1. title: "Hello, ${monthNum}월" 또는 영어 병기 형식 (20자 이내)
+2. body: 본문 (50~120자, 2~3개 단락, \\n\\n 구분)
+3. signature: 항상 "홍승빈 드림" (고정값)
+
+fullText = title + "\\n\\n" + body + "\\n\\n" + "홍승빈 드림" 형태로 조합
+
+=== 어투 규칙 ===
+✅ 덕담·바람체: ~되세요 / ~바랍니다 / ~되길 / ~응원합니다 / ~가득하길 / ~빛나길
+❌ 금지: ~입니다/~합니다(선언형) / ~하라/~가자(명령형) / 부정적 표현
+→ 따뜻하고 위로하는 덕담 어조, 강요 없이, 공감 중심
 
 === 길이 규칙 ===
-- fullText 전체: 예시와 동일한 길이 (너무 길지 않게, 최대 10줄)
-- 단락: 최대 3개, 각 2~3줄
-- 간결하고 여백 있는 문장
+- title: 20자 이내
+- body: 50~120자, 단락 2~3개, 각 2~4줄
+- 전체: 간결하고 여백 있게 (최대 10줄)
 
-=== 형식 ===
-fullText 구조:
-1. 첫 줄: **굵게** — ${monthNum}월 언급, 한 문장
-2. 본문: 2~3개 단락 (\\n\\n 구분), 각 2~3줄
-3. 마지막 줄: **굵게** 덕담 + 이모지
-- \\n = 줄바꿈, \\n\\n = 단락 구분
+quote (이미지용 핵심): body에서 2~3줄 발췌, 굵게·이모지·서명 없음, \\n 구분, 각 줄 12~20자
 
-quote (이미지용): 2~3줄, 굵게·이모지 없음, \\n 구분, 각 줄 12~20자
-
-=== 예시 (이 품질·구조·길이로 생성) ===
+=== 예시 ===
 
 [감성형]
-fullText: "**${monthNum}월의 첫날입니다.**\\n아직 이루지 못한 것보다\\n앞으로 이루어질 것이 더 많습니다.\\n\\n새로운 한 달,\\n새로운 기회,\\n새로운 나를 기대해 보세요.\\n\\n**당신의 ${monthNum}월을 응원합니다. 🌿**"
+title: "Hello, ${monthNum}월"
+body: "아직 이루지 못한 것보다\\n앞으로 이루어질 것이 더 많습니다.\\n\\n새로운 한 달, 새로운 기회,\\n새로운 나를 기대해 보세요.\\n\\n당신의 ${monthNum}월을 응원합니다. 🌿"
+signature: "홍승빈 드림"
+fullText: "Hello, ${monthNum}월\\n\\n아직 이루지 못한 것보다\\n앞으로 이루어질 것이 더 많습니다.\\n\\n새로운 한 달, 새로운 기회,\\n새로운 나를 기대해 보세요.\\n\\n당신의 ${monthNum}월을 응원합니다. 🌿\\n\\n홍승빈 드림"
 quote: "${monthNum}월의 새로운 시작\\n앞으로가 더 많습니다\\n당신을 응원합니다"
 
 [희망형]
-fullText: "**${monthNum}월은 다시 시작하기에 늦지 않은 시간입니다.**\\n\\n목표를 잊었어도 괜찮고,\\n잠시 멈춰 있었어도 괜찮습니다.\\n\\n오늘의 작은 한 걸음이\\n내일의 빛나는 변화가 되길 바랍니다.\\n\\n**당신의 ${monthNum}월이 빛나길 바랍니다. ✨**"
-quote: "다시 시작하기에\\n늦지 않은 ${monthNum}월\\n빛나는 변화가 되길"
+title: "Hello, ${monthNum}월"
+body: "목표를 잊었어도 괜찮고,\\n잠시 멈춰 있었어도 괜찮습니다.\\n\\n오늘의 작은 한 걸음이\\n빛나는 변화가 되길 바랍니다.\\n\\n당신의 ${monthNum}월이 빛나길 바랍니다. ✨"
+signature: "홍승빈 드림"
+fullText: "Hello, ${monthNum}월\\n\\n목표를 잊었어도 괜찮고,\\n잠시 멈춰 있었어도 괜찮습니다.\\n\\n오늘의 작은 한 걸음이\\n빛나는 변화가 되길 바랍니다.\\n\\n당신의 ${monthNum}월이 빛나길 바랍니다. ✨\\n\\n홍승빈 드림"
+quote: "멈춰 있었어도 괜찮습니다\\n오늘의 한 걸음이\\n빛나는 변화가 되길"
 
 [짧은 글귀형]
-fullText: "**${monthNum}월, 새로운 기회가 피어나는 계절이 되길 바랍니다.**\\n\\n천천히 가도 괜찮습니다.\\n멈추지만 않는다면\\n당신은 이미 성장 중입니다.\\n\\n🌱 행복한 ${monthNum}월 되세요."
-quote: "천천히 가도 괜찮습니다\\n멈추지만 않는다면\\n행복한 ${monthNum}월 되세요"
+title: "${monthNum}월, 당신에게"
+body: "천천히 가도 괜찮습니다.\\n멈추지만 않는다면\\n당신은 이미 성장하고 있습니다.\\n\\n행복한 ${monthNum}월 되세요. 🌱"
+signature: "홍승빈 드림"
+fullText: "${monthNum}월, 당신에게\\n\\n천천히 가도 괜찮습니다.\\n멈추지만 않는다면\\n당신은 이미 성장하고 있습니다.\\n\\n행복한 ${monthNum}월 되세요. 🌱\\n\\n홍승빈 드림"
+quote: "천천히 가도 괜찮습니다\\n멈추지만 않는다면\\n이미 성장하고 있습니다"
 
 [명언 스타일]
-fullText: "**\\"어제보다 조금 더 나아진 오늘이면 충분합니다.\\"**\\n\\n완벽함보다 꾸준함을,\\n결과보다 성장을 선택하는 ${monthNum}월 되시길 바랍니다.\\n\\n☘️ 당신의 모든 도전을 응원합니다."
-quote: "어제보다 조금 더 나아진\\n오늘이면 충분합니다\\n모든 도전을 응원합니다"
+title: "${monthNum}월의 말"
+body: "\\"어제보다 조금 더 나아진 오늘이면 충분합니다.\\"\\n\\n완벽함보다 꾸준함을,\\n결과보다 성장을 선택하는 ${monthNum}월 되시길 바랍니다.\\n\\n당신의 모든 도전을 응원합니다. ☘️"
+signature: "홍승빈 드림"
+fullText: "${monthNum}월의 말\\n\\n\\"어제보다 조금 더 나아진 오늘이면 충분합니다.\\"\\n\\n완벽함보다 꾸준함을,\\n결과보다 성장을 선택하는 ${monthNum}월 되시길 바랍니다.\\n\\n당신의 모든 도전을 응원합니다. ☘️\\n\\n홍승빈 드림"
+quote: "어제보다 나아진 오늘이면\\n충분합니다\\n모든 도전을 응원합니다"
 
 [인스타 감성형]
-fullText: "**Hello, ${monthNum === 6 ? "June" : monthNum === 1 ? "January" : monthNum === 2 ? "February" : monthNum === 3 ? "March" : monthNum === 4 ? "April" : monthNum === 5 ? "May" : monthNum === 7 ? "July" : monthNum === 8 ? "August" : monthNum === 9 ? "September" : monthNum === 10 ? "October" : monthNum === 11 ? "November" : "December"} 🌿**\\n\\n지나간 날들보다\\n다가올 날들이 더 따뜻하길 바랍니다.\\n\\n새로운 시작,\\n새로운 행복이 가득한\\n${monthNum}월이 되길 바랍니다.\\n\\n**당신의 ${monthNum}월을 응원합니다. ✨**"
+title: "Hello, June 🌿"
+body: "지나간 날들보다\\n다가올 날들이 더 따뜻하길 바랍니다.\\n\\n새로운 시작,\\n새로운 행복이 가득한\\n${monthNum}월이 되길 바랍니다. ✨"
+signature: "홍승빈 드림"
+fullText: "Hello, June 🌿\\n\\n지나간 날들보다\\n다가올 날들이 더 따뜻하길 바랍니다.\\n\\n새로운 시작,\\n새로운 행복이 가득한\\n${monthNum}월이 되길 바랍니다. ✨\\n\\n홍승빈 드림"
 quote: "지나간 날보다\\n다가올 날이 더 따뜻하길\\n당신의 ${monthNum}월을 응원합니다"
 
 === 출력 JSON ===
 {
   "styles": [
-    { "id":"emotional","label":"감성형","quote":"...","fullText":"..." },
-    { "id":"hopeful","label":"희망형","quote":"...","fullText":"..." },
-    { "id":"short","label":"짧은 글귀형","quote":"...","fullText":"..." },
-    { "id":"quote_style","label":"명언 스타일","quote":"...","fullText":"..." },
-    { "id":"insta","label":"인스타 감성형","quote":"...","fullText":"..." }
+    { "id":"emotional","label":"감성형","title":"...","quote":"...","fullText":"...","signature":"홍승빈 드림" },
+    { "id":"hopeful","label":"희망형","title":"...","quote":"...","fullText":"...","signature":"홍승빈 드림" },
+    { "id":"short","label":"짧은 글귀형","title":"...","quote":"...","fullText":"...","signature":"홍승빈 드림" },
+    { "id":"quote_style","label":"명언 스타일","title":"...","quote":"...","fullText":"...","signature":"홍승빈 드림" },
+    { "id":"insta","label":"인스타 감성형","title":"...","quote":"...","fullText":"...","signature":"홍승빈 드림" }
   ]
 }`,
         },
@@ -287,7 +303,7 @@ quote: "지나간 날보다\\n다가올 날이 더 따뜻하길\\n당신의 ${mo
   // imageBase64: gpt-image-1 성공 → 사용, 실패 → 캔버스 오버레이 폴백
   let imageBase64: string | null = designedImage;
   if (!imageBase64 && rawImageBase64) {
-    try { imageBase64 = await applyQuoteToImage(rawImageBase64, styles[0].quote, styles[0].fullText); }
+    try { imageBase64 = await applyQuoteToImage(rawImageBase64, styles[0].quote, styles[0].fullText, styles[0].signature); }
     catch { imageBase64 = rawImageBase64; }
   }
 
