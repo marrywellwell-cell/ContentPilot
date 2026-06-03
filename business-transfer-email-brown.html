@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>웨딩·라이프스타일 플랫폼 전략적 파트너 모집</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&display=swap');
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'Noto Sans KR', 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
+      background: #f5f0eb;
+      color: #2d2d2d;
+      min-height: 100vh;
+      padding: 32px 16px;
+    }
+
+    .email-wrapper {
+      max-width: 640px;
+      margin: 0 auto;
+    }
+
+    /* Header */
+    .header {
+      background: linear-gradient(135deg, #c9a98a 0%, #e8cfc0 40%, #d4b8a8 100%);
+      border-radius: 20px 20px 0 0;
+      padding: 56px 48px 44px;
+      text-align: center;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .header::before {
+      content: '';
+      position: absolute;
+      top: -60px; right: -60px;
+      width: 220px; height: 220px;
+      background: rgba(255,255,255,0.12);
+      border-radius: 50%;
+    }
+
+    .header::after {
+      content: '';
+      position: absolute;
+      bottom: -40px; left: -40px;
+      width: 160px; height: 160px;
+      background: rgba(255,255,255,0.10);
+      border-radius: 50%;
+    }
+
+    .header-icon {
+      font-size: 42px;
+      margin-bottom: 16px;
+      display: block;
+      position: relative;
+      z-index: 1;
+    }
+
+    .header-label {
+      display: inline-block;
+      background: rgba(255,255,255,0.35);
+      color: #5a3e2b;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 2.5px;
+      text-transform: uppercase;
+      padding: 5px 16px;
+      border-radius: 20px;
+      margin-bottom: 18px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .header h1 {
+      font-size: 26px;
+      font-weight: 700;
+      color: #3b2510;
+      line-height: 1.4;
+      position: relative;
+      z-index: 1;
+      margin-bottom: 10px;
+    }
+
+    .header p {
+      font-size: 14px;
+      color: #5a3e2b;
+      font-weight: 400;
+      position: relative;
+      z-index: 1;
+      line-height: 1.6;
+    }
+
+    /* Body */
+    .body {
+      background: #ffffff;
+      padding: 44px 48px;
+    }
+
+    /* Intro */
+    .intro-box {
+      background: linear-gradient(135deg, #fdf6f0, #f9ede5);
+      border-left: 4px solid #c9a98a;
+      border-radius: 0 12px 12px 0;
+      padding: 24px 28px;
+      margin-bottom: 40px;
+    }
+
+    .intro-box p {
+      font-size: 15px;
+      line-height: 1.85;
+      color: #3d2e22;
+      font-weight: 400;
+    }
+
+    .intro-box strong {
+      color: #9b6a3a;
+      font-weight: 700;
+    }
+
+    /* Section Title */
+    .section-title {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 16px;
+      font-weight: 700;
+      color: #3b2510;
+      margin-bottom: 18px;
+      margin-top: 36px;
+    }
+
+    .section-title .dot {
+      width: 8px; height: 8px;
+      background: #c9a98a;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    /* Asset Grid */
+    .asset-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-bottom: 8px;
+    }
+
+    .asset-card {
+      background: #fdf8f4;
+      border: 1px solid #ecddd3;
+      border-radius: 12px;
+      padding: 16px 18px;
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+    }
+
+    .asset-card .icon {
+      font-size: 22px;
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+
+    .asset-card .text {
+      font-size: 13px;
+      color: #4a3728;
+      font-weight: 500;
+      line-height: 1.5;
+    }
+
+    /* Target List */
+    .target-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .target-list li {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      background: #f9f5f1;
+      border-radius: 10px;
+      padding: 13px 18px;
+      font-size: 14px;
+      color: #3d2e22;
+      font-weight: 400;
+    }
+
+    .target-list li .badge {
+      background: linear-gradient(135deg, #c9a98a, #b8906f);
+      color: white;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 3px 10px;
+      border-radius: 20px;
+      flex-shrink: 0;
+    }
+
+    /* Divider */
+    .divider {
+      height: 1px;
+      background: linear-gradient(90deg, transparent, #e0cfc4, transparent);
+      margin: 36px 0;
+    }
+
+    /* Cooperation Types */
+    .coop-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 10px;
+      margin-bottom: 8px;
+    }
+
+    .coop-card {
+      background: linear-gradient(135deg, #3b2510, #5a3e2b);
+      border-radius: 12px;
+      padding: 20px 14px;
+      text-align: center;
+      color: white;
+    }
+
+    .coop-card .coop-icon {
+      font-size: 24px;
+      margin-bottom: 8px;
+      display: block;
+    }
+
+    .coop-card .coop-title {
+      font-size: 13px;
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+
+    .coop-card .coop-desc {
+      font-size: 11px;
+      color: rgba(255,255,255,0.65);
+      line-height: 1.4;
+    }
+
+    /* CTA */
+    .cta-section {
+      background: linear-gradient(135deg, #c9a98a 0%, #d4b8a8 100%);
+      border-radius: 16px;
+      padding: 36px 32px;
+      text-align: center;
+      margin-top: 40px;
+    }
+
+    .cta-section h3 {
+      font-size: 18px;
+      font-weight: 700;
+      color: #2d1a0e;
+      margin-bottom: 10px;
+    }
+
+    .cta-section p {
+      font-size: 13px;
+      color: #5a3e2b;
+      line-height: 1.7;
+      margin-bottom: 24px;
+    }
+
+    .cta-button {
+      display: inline-block;
+      background: #3b2510;
+      color: #fff;
+      font-size: 14px;
+      font-weight: 700;
+      padding: 14px 36px;
+      border-radius: 50px;
+      text-decoration: none;
+      letter-spacing: 0.5px;
+      transition: background 0.2s;
+    }
+
+    .cta-button:hover {
+      background: #5a3e2b;
+    }
+
+    /* Footer */
+    .footer {
+      background: #2d1a0e;
+      border-radius: 0 0 20px 20px;
+      padding: 28px 48px;
+      text-align: center;
+    }
+
+    .footer p {
+      color: rgba(255,255,255,0.5);
+      font-size: 12px;
+      line-height: 1.7;
+    }
+
+    .footer .footer-brand {
+      color: #c9a98a;
+      font-weight: 700;
+      font-size: 14px;
+      margin-bottom: 6px;
+    }
+
+    .footer a {
+      color: #c9a98a;
+      text-decoration: none;
+    }
+
+    .footer a:hover {
+      text-decoration: underline;
+    }
+
+    /* Responsive */
+    @media (max-width: 500px) {
+      .header { padding: 40px 28px 32px; }
+      .body { padding: 32px 24px; }
+      .footer { padding: 24px 28px; }
+      .asset-grid { grid-template-columns: 1fr; }
+      .coop-grid { grid-template-columns: 1fr; }
+      .header h1 { font-size: 22px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="email-wrapper">
+
+    <!-- Header -->
+    <div class="header">
+      <span class="header-icon">💍</span>
+      <div class="header-label">Strategic Partnership</div>
+      <h1>웨딩·라이프스타일 플랫폼<br>전략적 파트너를 찾습니다</h1>
+      <p>사업 재편 및 운영 이전 관점에서<br>함께 성장할 파트너 또는 인수 기업을 모색합니다.</p>
+    </div>
+
+    <!-- Body -->
+    <div class="body">
+
+      <!-- Intro -->
+      <div class="intro-box">
+        <p>
+          현재 <strong>모바일 청첩장, 하객관리, 축의금 정산까지 결혼준비 과정을 하나로 통합한 웨딩 핀테크 플랫폼</strong>을 운영하며,
+          브랜드·플랫폼·운영 인프라·콘텐츠 자산 등을 보유하고 있습니다.<br><br>
+          이 사업을 이어받아 함께 발전시켜 나갈 <strong>파트너사 또는 인수 희망 기업</strong>을
+          적극적으로 찾고 있습니다.
+        </p>
+      </div>
+
+      <!-- Assets -->
+      <div class="section-title">
+        <span class="dot"></span>
+        보유 자산 현황
+      </div>
+
+      <div class="asset-grid">
+        <div class="asset-card">
+          <span class="icon">🖥️</span>
+          <span class="text">플랫폼 및<br>운영 인프라</span>
+        </div>
+        <div class="asset-card">
+          <span class="icon">🤖</span>
+          <span class="text">AI 기반<br>서비스 기획 구조</span>
+        </div>
+        <div class="asset-card">
+          <span class="icon">🌐</span>
+          <span class="text">도메인 및<br>브랜드 자산</span>
+        </div>
+        <div class="asset-card">
+          <span class="icon">📲</span>
+          <span class="text">콘텐츠 /<br>SNS 채널</span>
+        </div>
+        <div class="asset-card">
+          <span class="icon">💳</span>
+          <span class="text">핀테크<br>(금융결제원 승인)</span>
+        </div>
+        <div class="asset-card">
+          <span class="icon">💒</span>
+          <span class="text">웨딩·신혼<br>서비스 구조</span>
+        </div>
+      </div>
+
+      <div class="divider"></div>
+
+      <!-- Target -->
+      <div class="section-title">
+        <span class="dot"></span>
+        관심 대상 기업 / 파트너
+      </div>
+
+      <ul class="target-list">
+        <li>
+          <span class="badge">Wedding</span>
+          웨딩 / 라이프스타일 업계
+        </li>
+        <li>
+          <span class="badge">Platform</span>
+          플랫폼 운영사
+        </li>
+        <li>
+          <span class="badge">Marketing</span>
+          마케팅 / 커뮤니티 기업
+        </li>
+        <li>
+          <span class="badge">AI</span>
+          AI 서비스 확장 기업
+        </li>
+        <li>
+          <span class="badge">New Biz</span>
+          신규 사업 검토 기업
+        </li>
+      </ul>
+
+      <div class="divider"></div>
+
+      <!-- Cooperation Types -->
+      <div class="section-title">
+        <span class="dot"></span>
+        협력 형태 (모두 열려 있습니다)
+      </div>
+
+      <div class="coop-grid">
+        <div class="coop-card">
+          <span class="coop-icon">💼</span>
+          <div class="coop-title">전체 인수</div>
+          <div class="coop-desc">사업 전체<br>양도</div>
+        </div>
+        <div class="coop-card">
+          <span class="coop-icon">✂️</span>
+          <div class="coop-title">부분 양도</div>
+          <div class="coop-desc">자산·채널<br>일부 이전</div>
+        </div>
+        <div class="coop-card">
+          <span class="coop-icon">🔗</span>
+          <div class="coop-title">전략 제휴</div>
+          <div class="coop-desc">공동 운영·<br>파트너십</div>
+        </div>
+      </div>
+
+      <!-- CTA -->
+      <div class="cta-section">
+        <h3>함께 이야기 나눠보실래요?</h3>
+        <p>
+          형태나 규모에 관계없이 관심 있으신 분이라면<br>
+          편하게 연락 주시면 감사하겠습니다.<br>
+          구체적인 내용은 미팅을 통해 말씀드리겠습니다.
+        </p>
+        <a class="cta-button" href="https://docs.google.com/forms/d/e/1FAIpQLSfADEX0pvAuFKTBpirq7S68kUCsQ6-wkAn1ITnViqXDB1IeZQ/viewform?usp=header" target="_blank">
+          📩 &nbsp;문의하기
+        </a>
+      </div>
+
+    </div>
+
+    <!-- Footer -->
+    <div class="footer">
+      <div class="footer-brand">Wedding &amp; Lifestyle Platform</div>
+      <p>
+        본 메일은 전략적 파트너십 및 사업 이전 관련 안내 목적으로 발송되었습니다.<br>
+        🌐 <a href="marrywell-brochure.html" target="_blank">사업소개서 보기</a>
+        &nbsp;|&nbsp;
+        ✉️ <a href="mailto:partners@marrywell.co.kr">partners@marrywell.co.kr</a>
+      </p>
+    </div>
+
+  </div>
+</body>
+</html>

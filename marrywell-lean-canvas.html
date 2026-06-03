@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Marrywell 린캔버스</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700;900&display=swap');
+
+    @page {
+      size: A4 landscape;
+      margin: 8mm;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'Noto Sans KR', 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
+      background: #e8e8e8;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 24px 16px 40px;
+    }
+
+    /* ── 툴바 (인쇄 시 숨김) ── */
+    .toolbar {
+      width: 281mm;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 14px;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .toolbar-info { font-size: 13px; color: #555; }
+    .toolbar-info strong { color: #111; }
+
+    .btn-dl {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: #111;
+      color: #fff;
+      font-size: 13px;
+      font-weight: 700;
+      padding: 10px 24px;
+      border-radius: 50px;
+      border: none;
+      cursor: pointer;
+    }
+
+    .btn-tip {
+      font-size: 11px;
+      color: #888;
+      margin-top: 3px;
+    }
+
+    /* ── 캔버스 전체 ── */
+    .canvas {
+      width: 281mm;
+      background: #fff;
+      border: 1.5px solid #111;
+      font-size: 10.5pt;
+    }
+
+    /* ── 헤더 ── */
+    .canvas-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 7px 12px;
+      border-bottom: 1.5px solid #111;
+    }
+
+    .hdr-left {
+      display: flex;
+      align-items: baseline;
+      gap: 10px;
+    }
+
+    .hdr-title {
+      font-size: 14pt;
+      font-weight: 900;
+      color: #111;
+      letter-spacing: -0.3px;
+    }
+
+    .hdr-sub {
+      font-size: 8pt;
+      color: #666;
+      font-weight: 400;
+    }
+
+    .hdr-right {
+      font-size: 8pt;
+      color: #555;
+      text-align: right;
+      line-height: 1.5;
+    }
+
+    /* ── 그리드 ── */
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1.15fr 1fr 1fr;
+      grid-template-rows: 62mm 46mm 38mm;
+    }
+
+    /* 공통 셀 */
+    .cell {
+      border-right: 1px solid #333;
+      border-bottom: 1px solid #333;
+      padding: 7px 9px;
+      overflow: hidden;
+    }
+
+    .cell:nth-child(5),
+    .cell.no-right { border-right: none; }
+
+    /* UVP: 행 1~2 합침 */
+    .cell-uvp {
+      grid-row: 1 / 3;
+      background: #f7f7f7;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      border-right: 1px solid #333;
+      border-bottom: 1px solid #333;
+      padding: 10px 12px;
+    }
+
+    /* 하단 Cost */
+    .cell-cost {
+      grid-column: 1 / 3;
+      border-right: 1px solid #333;
+      border-bottom: none;
+    }
+
+    /* 하단 Revenue */
+    .cell-revenue {
+      grid-column: 3 / 6;
+      border-right: none;
+      border-bottom: none;
+    }
+
+    /* ── 셀 내부 스타일 ── */
+    .cell-label {
+      font-size: 7pt;
+      font-weight: 700;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: #888;
+      margin-bottom: 4px;
+    }
+
+    .cell-title {
+      font-size: 9.5pt;
+      font-weight: 800;
+      color: #111;
+      margin-bottom: 6px;
+      line-height: 1.3;
+    }
+
+    ul.items {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 3px;
+    }
+
+    ul.items li {
+      font-size: 8.5pt;
+      color: #222;
+      padding-left: 10px;
+      position: relative;
+      line-height: 1.5;
+    }
+
+    ul.items li::before {
+      content: '–';
+      position: absolute;
+      left: 0;
+      color: #888;
+    }
+
+    ul.items li strong {
+      font-weight: 700;
+    }
+
+    .divider {
+      height: 1px;
+      background: #ddd;
+      margin: 6px 0;
+    }
+
+    .sub-label {
+      font-size: 7pt;
+      font-weight: 700;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: #aaa;
+      margin-bottom: 4px;
+    }
+
+    /* UVP 내부 */
+    .uvp-icon { font-size: 22pt; margin-bottom: 6px; }
+
+    .uvp-headline {
+      font-size: 11pt;
+      font-weight: 900;
+      color: #111;
+      line-height: 1.4;
+      margin-bottom: 8px;
+    }
+
+    .uvp-sub {
+      font-size: 8pt;
+      color: #555;
+      line-height: 1.6;
+      margin-bottom: 10px;
+    }
+
+    .uvp-pills {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      justify-content: center;
+    }
+
+    .pill {
+      border: 1px solid #333;
+      color: #333;
+      font-size: 7pt;
+      font-weight: 700;
+      padding: 2px 8px;
+      border-radius: 20px;
+    }
+
+    .uvp-concept {
+      margin-top: 10px;
+      border-top: 1px solid #ddd;
+      padding-top: 8px;
+      font-size: 8pt;
+      color: #444;
+      font-style: italic;
+      line-height: 1.5;
+    }
+
+    /* 하단 2열 내부 */
+    .bottom-cols {
+      display: flex;
+      gap: 16px;
+      height: 100%;
+    }
+
+    .bottom-col {
+      flex: 1;
+    }
+
+    .bottom-col .bl {
+      font-size: 7pt;
+      font-weight: 700;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: #aaa;
+      margin-bottom: 4px;
+    }
+
+    .bottom-col .bi {
+      font-size: 8.5pt;
+      color: #222;
+      padding-left: 10px;
+      position: relative;
+      line-height: 1.55;
+      margin-bottom: 2px;
+    }
+
+    .bottom-col .bi::before {
+      content: '–';
+      position: absolute;
+      left: 0;
+      color: #aaa;
+    }
+
+    /* ── 푸터 ── */
+    .canvas-footer {
+      border-top: 1px solid #ccc;
+      padding: 5px 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .canvas-footer span {
+      font-size: 7.5pt;
+      color: #999;
+    }
+
+    /* ── 인쇄 CSS ── */
+    @media print {
+      body {
+        background: white;
+        padding: 0;
+        display: block;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+
+      .toolbar { display: none !important; }
+
+      .canvas {
+        width: 100%;
+        border: 1.5px solid #111;
+        box-shadow: none;
+      }
+
+      .grid {
+        grid-template-rows: 62mm 46mm 38mm;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- 툴바 -->
+  <div class="toolbar">
+    <div>
+      <div class="toolbar-info"><strong>Marrywell 린캔버스</strong> — A4 가로 1페이지 PDF</div>
+      <div class="btn-tip">💡 저장 시 인쇄 설정에서 "배경 그래픽 포함" 체크 해제해도 됩니다</div>
+    </div>
+    <div style="text-align:right;">
+      <button class="btn-dl" onclick="window.print()">⬇ PDF로 저장</button>
+      <div class="btn-tip" style="margin-top:5px;">클릭 → 대상: PDF로 저장 선택</div>
+    </div>
+  </div>
+
+  <!-- 캔버스 -->
+  <div class="canvas">
+
+    <!-- 헤더 -->
+    <div class="canvas-header">
+      <div class="hdr-left">
+        <div class="hdr-title">💍 Marrywell &nbsp;린캔버스 (Lean Canvas)</div>
+        <div class="hdr-sub">Wedding Fintech Platform</div>
+      </div>
+      <div class="hdr-right">
+        Confidential · 2026<br>
+        www.marrywell.co.kr
+      </div>
+    </div>
+
+    <!-- 그리드 -->
+    <div class="grid">
+
+      <!-- ① Problem -->
+      <div class="cell">
+        <div class="cell-label">① Problem</div>
+        <div class="cell-title">해결할 문제</div>
+        <ul class="items">
+          <li>청첩장 제작·발송이 비효율적, 수신 확인 불가</li>
+          <li>하객 명단·RSVP를 엑셀·카톡으로 수동 관리</li>
+          <li>축의금 수기 기록, 분실 위험, 정산 불투명</li>
+        </ul>
+        <div class="divider"></div>
+        <div class="sub-label">기존 대안</div>
+        <ul class="items">
+          <li>종이 청첩장 + 카카오 개별 발송</li>
+          <li>엑셀·메모장 수동 관리</li>
+          <li>현금 수기 장부</li>
+        </ul>
+      </div>
+
+      <!-- ② Solution -->
+      <div class="cell">
+        <div class="cell-label">② Solution</div>
+        <div class="cell-title">핵심 솔루션</div>
+        <ul class="items">
+          <li><strong>모바일 청첩장</strong> — 커스텀 제작·링크 공유·수신 확인</li>
+          <li><strong>하객 관리</strong> — RSVP 자동화, 테이블 배치</li>
+          <li><strong>축의금 정산</strong> — 전용계좌 발급, 자동 리포트</li>
+          <li><strong>AI 어시스턴트</strong> — 일정·체크리스트·업체 추천</li>
+        </ul>
+      </div>
+
+      <!-- ③ UVP (2행 합침) -->
+      <div class="cell cell-uvp">
+        <div class="cell-label">③ Unique Value Proposition</div>
+        <div class="uvp-icon">💍</div>
+        <div class="uvp-headline">결혼준비의 모든 것,<br>하나의 플랫폼으로</div>
+        <div class="uvp-sub">
+          모바일 청첩장 → 하객 관리 →<br>
+          축의금 정산까지 원스톱 통합
+        </div>
+        <div class="uvp-pills">
+          <span class="pill">핀테크 승인</span>
+          <span class="pill">AI 기반</span>
+          <span class="pill">원스톱</span>
+          <span class="pill">모바일 퍼스트</span>
+        </div>
+        <div class="uvp-concept">
+          "카카오뱅크 + 청첩장 + 하객관리를<br>합친 웨딩 핀테크"
+        </div>
+      </div>
+
+      <!-- ④ Unfair Advantage -->
+      <div class="cell">
+        <div class="cell-label">④ Unfair Advantage</div>
+        <div class="cell-title">경쟁 우위</div>
+        <ul class="items">
+          <li><strong>금융결제원 승인</strong> — 단기 복제 불가 핀테크 라이선스</li>
+          <li><strong>원스톱 구조</strong> — 청첩장·하객·정산 연결 락인</li>
+          <li><strong>하객 바이럴 루프</strong> — 하객→예비부부 자연 전환</li>
+          <li><strong>AI 서비스</strong> — 개인화 결혼 준비 경험</li>
+        </ul>
+      </div>
+
+      <!-- ⑤ Customer Segments -->
+      <div class="cell no-right">
+        <div class="cell-label">⑤ Customer Segments</div>
+        <div class="cell-title">고객 세그먼트</div>
+        <ul class="items">
+          <li><strong>핵심</strong> — 결혼 준비 예비 부부 (20~35세)</li>
+          <li>디지털 네이티브, 모바일 친화적</li>
+        </ul>
+        <div class="divider"></div>
+        <div class="sub-label">Early Adopters</div>
+        <ul class="items">
+          <li>SNS 활발한 2030 예비 부부</li>
+          <li>웨딩홀·스드메 업체 (B2B)</li>
+          <li>결혼식 하객 (자연 유입)</li>
+        </ul>
+      </div>
+
+      <!-- ⑥ Key Metrics -->
+      <div class="cell">
+        <div class="cell-label">⑥ Key Metrics</div>
+        <div class="cell-title">핵심 지표</div>
+        <ul class="items">
+          <li>월간 청첩장 발행 건수</li>
+          <li>하객 당 앱 유입률 (바이럴 계수)</li>
+          <li>축의금 정산 거래액 (GMV)</li>
+          <li>커플 당 LTV</li>
+          <li>B2B 제휴 업체 수</li>
+        </ul>
+      </div>
+
+      <!-- ⑦ Channels -->
+      <div class="cell">
+        <div class="cell-label">⑦ Channels</div>
+        <div class="cell-title">채널</div>
+        <ul class="items">
+          <li><strong>획득</strong> — 인스타·유튜브, 커뮤니티, SEO</li>
+          <li><strong>활성화</strong> — 무료 청첩장 체험, 온보딩</li>
+          <li><strong>추천</strong> — 하객 바이럴, 지인 추천</li>
+          <li><strong>B2B</strong> — 웨딩홀 제휴 패키지</li>
+        </ul>
+      </div>
+
+      <!-- ⑧ Cost Structure -->
+      <div class="cell cell-cost">
+        <div class="cell-label">⑧ Cost Structure</div>
+        <div class="cell-title" style="margin-bottom:6px;">비용 구조</div>
+        <div class="bottom-cols">
+          <div class="bottom-col">
+            <div class="bl">고정 비용</div>
+            <div class="bi">플랫폼 서버·운영 인프라</div>
+            <div class="bi">핀테크 라이선스·금융 인프라 유지</div>
+            <div class="bi">인건비 (개발·운영·CS)</div>
+          </div>
+          <div class="bottom-col">
+            <div class="bl">변동 비용</div>
+            <div class="bi">마케팅·콘텐츠 제작</div>
+            <div class="bi">결제 처리 수수료</div>
+            <div class="bi">제휴 업체 관리</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ⑨ Revenue Streams -->
+      <div class="cell cell-revenue">
+        <div class="cell-label">⑨ Revenue Streams</div>
+        <div class="cell-title" style="margin-bottom:6px;">수익 구조</div>
+        <div class="bottom-cols">
+          <div class="bottom-col">
+            <div class="bl">B2C</div>
+            <div class="bi">청첩장 프리미엄 플랜 (구독·건당)</div>
+            <div class="bi">축의금 정산 수수료 (거래액 %)</div>
+          </div>
+          <div class="bottom-col">
+            <div class="bl">B2B</div>
+            <div class="bi">웨딩 업체 광고·제휴 (CPC / 월정액)</div>
+            <div class="bi">웨딩홀 전용 솔루션 패키지</div>
+            <div class="bi">웨딩 데이터 인사이트 리포트</div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /grid -->
+
+    <!-- 푸터 -->
+    <div class="canvas-footer">
+      <span>© 2026 Marrywell · 본 문서는 기밀입니다.</span>
+      <span>partners@marrywell.co.kr &nbsp;|&nbsp; www.marrywell.co.kr</span>
+    </div>
+
+  </div><!-- /canvas -->
+
+</body>
+</html>
