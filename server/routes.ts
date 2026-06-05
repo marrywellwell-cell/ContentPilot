@@ -367,27 +367,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
     fs.createReadStream(filePath).pipe(res);
   });
 
-  // ─── Shorts Video: save, stream, delete ───────────────────────────
+  // ─── Shorts Video: 메모리 + /tmp 이중 저장 (Render 임시 파일시스템 대응) ───
+  // 서버 재시작 전까지 메모리에 WebM 유지
+  const webmStore = new Map<string, Buffer>();
+
   app.post("/api/shorts-video/save/:contentId", isAuthenticated, express.raw({ type: "*/*", limit: "500mb" }), async (req: any, res) => {
     try {
       const { contentId } = req.params;
       const buffer = req.body as Buffer;
       if (!buffer || buffer.length === 0) return res.status(400).json({ error: "No video data" });
 
-      const path = await import("path");
-      const fs = await import("fs");
-      const videosDir = path.join(process.cwd(), "server/assets/videos");
-      if (!fs.existsSync(videosDir)) fs.mkdirSync(videosDir, { recursive: true });
+      // 메모리에 저장 (서버 재시작 전까지 유지)
+      webmStore.set(contentId, buffer);
 
-      const filePath = path.join(videosDir, `${contentId}.webm`);
-      fs.writeFileSync(filePath, buffer);
+      // /tmp 에도 저장 (메모리 부족 시 폴백)
+      const fsSync = await import("fs");
+      const pathMod = await import("path");
+      const tmpDir = "/tmp/shorts";
+      if (!fsSync.existsSync(tmpDir)) fsSync.mkdirSync(tmpDir, { recursive: true });
+      const tmpPath = pathMod.join(tmpDir, `${contentId}.webm`);
+      fsSync.writeFileSync(tmpPath, buffer);
 
-      // Update DB record with the video URL
       await storage.updateInventionContent(contentId, {
         shortsVideoUrl: `/api/shorts-video/stream/${contentId}`,
       } as any);
 
-      console.log(`Shorts video saved: ${contentId} (${buffer.length} bytes)`);
+      console.log(`[shorts] WebM 저장: ${contentId} (${buffer.length} bytes) — 메모리+/tmp`);
       res.json({ success: true, url: `/api/shorts-video/stream/${contentId}` });
     } catch (error) {
       console.error("Shorts video save error:", error);
@@ -398,61 +403,73 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/shorts-video/stream/:contentId", isAuthenticated, async (req: any, res) => {
     try {
       const { contentId } = req.params;
-      const path = await import("path");
-      const fs = await import("fs");
-      const filePath = path.join(process.cwd(), "server/assets/videos", `${contentId}.webm`);
-      if (!fs.existsSync(filePath)) return res.status(404).json({ error: "Video not found" });
 
-      const stat = fs.statSync(filePath);
-      const range = req.headers.range;
-
-      if (range) {
-        const parts = range.replace(/bytes=/, "").split("-");
-        const start = parseInt(parts[0], 10);
-        const end = parts[1] ? parseInt(parts[1], 10) : stat.size - 1;
-        const chunkSize = end - start + 1;
-        res.writeHead(206, {
-          "Content-Range": `bytes ${start}-${end}/${stat.size}`,
-          "Accept-Ranges": "bytes",
-          "Content-Length": chunkSize,
-          "Content-Type": "video/webm",
-        });
-        fs.createReadStream(filePath, { start, end }).pipe(res);
-      } else {
-        res.writeHead(200, {
-          "Content-Length": stat.size,
-          "Content-Type": "video/webm",
-          "Accept-Ranges": "bytes",
-        });
-        fs.createReadStream(filePath).pipe(res);
+      // 1차: 메모리
+      const memBuf = webmStore.get(contentId);
+      if (memBuf) {
+        const range = req.headers.range;
+        if (range) {
+          const parts = range.replace(/bytes=/, "").split("-");
+          const start = parseInt(parts[0], 10);
+          const end = parts[1] ? parseInt(parts[1], 10) : memBuf.length - 1;
+          res.writeHead(206, {
+            "Content-Range": `bytes ${start}-${end}/${memBuf.length}`,
+            "Accept-Ranges": "bytes", "Content-Length": end - start + 1, "Content-Type": "video/webm",
+          });
+          return res.end(memBuf.slice(start, end + 1));
+        }
+        res.writeHead(200, { "Content-Length": memBuf.length, "Content-Type": "video/webm", "Accept-Ranges": "bytes" });
+        return res.end(memBuf);
       }
+
+      // 2차: /tmp
+      const fsSync = await import("fs");
+      const pathMod = await import("path");
+      const tmpPath = pathMod.join("/tmp/shorts", `${contentId}.webm`);
+      if (fsSync.existsSync(tmpPath)) {
+        const stat = fsSync.statSync(tmpPath);
+        res.writeHead(200, { "Content-Length": stat.size, "Content-Type": "video/webm", "Accept-Ranges": "bytes" });
+        return fsSync.createReadStream(tmpPath).pipe(res);
+      }
+
+      return res.status(404).json({ error: "영상을 찾을 수 없습니다. 서버가 재시작되어 영상이 초기화됐습니다. 다시 녹화해주세요." });
     } catch (error) {
       console.error("Shorts video stream error:", error);
       res.status(500).json({ error: "Failed to stream video" });
     }
   });
 
-  // Convert saved WebM to Instagram-compatible MP4 using FFmpeg
+  // Convert saved WebM to MP4 using FFmpeg
   app.post("/api/shorts-video/convert-mp4/:contentId", isAuthenticated, async (req: any, res) => {
     try {
       const { contentId } = req.params;
-      // format: "reels" = 9:16 (1080x1920), "feed" = 4:5 (1080x1350)
       const format: "reels" | "feed" = req.body?.format === "feed" ? "feed" : "reels";
-      const path = await import("path");
-      const fs = await import("fs");
+      const fsSync = await import("fs");
+      const pathMod = await import("path");
       const { execFile } = await import("child_process");
       const { promisify } = await import("util");
       const execFileAsync = promisify(execFile);
 
-      const videosDir = path.join(process.cwd(), "server/assets/videos");
-      const webmPath = path.join(videosDir, `${contentId}.webm`);
-      const suffix = format === "feed" ? "-feed" : "";
-      const mp4Path = path.join(videosDir, `${contentId}${suffix}.mp4`);
+      // WebM 소스: 메모리 → /tmp 순서로 탐색
+      const tmpDir = "/tmp/shorts";
+      if (!fsSync.existsSync(tmpDir)) fsSync.mkdirSync(tmpDir, { recursive: true });
+      const webmPath = pathMod.join(tmpDir, `${contentId}.webm`);
 
-      if (!fs.existsSync(webmPath)) {
-        return res.status(404).json({ error: "Source WebM not found. Generate the video first." });
+      // 메모리에 있으면 /tmp에 다시 써줌
+      const memBuf = webmStore.get(contentId);
+      if (memBuf && !fsSync.existsSync(webmPath)) {
+        fsSync.writeFileSync(webmPath, memBuf);
       }
 
+      if (!fsSync.existsSync(webmPath)) {
+        return res.status(404).json({
+          error: "서버 재시작으로 영상 데이터가 사라졌습니다. 영상을 다시 녹화해주세요.",
+          needReRecord: true,
+        });
+      }
+
+      const suffix = format === "feed" ? "-feed" : "";
+      const mp4Path = pathMod.join(tmpDir, `${contentId}${suffix}.mp4`);
       const urlPath = format === "feed"
         ? `/api/shorts-video/mp4/${contentId}?format=feed`
         : `/api/shorts-video/mp4/${contentId}`;
@@ -502,8 +519,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const suffix = isFeed ? "-feed" : "";
       const path = await import("path");
       const fs = await import("fs");
-      const filePath = path.join(process.cwd(), "server/assets/videos", `${contentId}${suffix}.mp4`);
-      if (!fs.existsSync(filePath)) return res.status(404).json({ error: "MP4 not found. Run conversion first." });
+      // /tmp/shorts 우선, 폴백으로 server/assets/videos
+      const filePath = fs.existsSync(path.join("/tmp/shorts", `${contentId}${suffix}.mp4`))
+        ? path.join("/tmp/shorts", `${contentId}${suffix}.mp4`)
+        : path.join(process.cwd(), "server/assets/videos", `${contentId}${suffix}.mp4`);
+      if (!fs.existsSync(filePath)) return res.status(404).json({ error: "MP4를 찾을 수 없습니다. 변환을 다시 실행해주세요." });
 
       const stat = fs.statSync(filePath);
       const range = req.headers.range;
