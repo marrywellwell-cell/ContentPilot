@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import {
   Sparkles, RefreshCw, Download, Copy, Check, Save,
   Loader2, Image as ImageIcon, Hash, Trash2, Calendar,
-  Edit2, CheckCircle, ChevronRight,
+  Edit2, CheckCircle, ChevronRight, Youtube,
 } from "lucide-react";
 
 // ── 타입 ──────────────────────────────────────────────────────────────────────
@@ -179,6 +179,38 @@ export default function MonthlyHopeContent() {
     onError: (e: Error) => toast({ title: "생성 실패", description: e.message, variant: "destructive" }),
   });
 
+  // YouTube 업로드
+  const youtubeMutation = useMutation({
+    mutationFn: async () => {
+      // YouTube 인증 상태 확인
+      const status = await apiRequest("/api/youtube-upload/status") as any;
+      if (!status.authenticated) {
+        // 인증 URL 받아서 새 창 열기
+        const authData = await apiRequest("/api/youtube-upload/auth-url") as any;
+        window.open(authData.url, "_blank", "width=600,height=700");
+        throw new Error("YouTube 로그인 창이 열렸습니다. 로그인 후 다시 시도해주세요.");
+      }
+      return apiRequest("/api/monthly-content/youtube-upload", {
+        method: "POST",
+        body: JSON.stringify({
+          imageBase64: generated!.imageBase64,
+          title: activeStyle?.title ?? `${selectedMonth} 희망 메시지`,
+          description: `${activeStyle?.fullText ?? ""}\n\n${generated!.hashtags.join(" ")}`,
+          hashtags: generated!.hashtags,
+          privacyStatus: "public",
+        }),
+      }) as Promise<{ success: boolean; videoUrl?: string; error?: string }>;
+    },
+    onSuccess: (data) => {
+      if (data.success) {
+        toast({ title: "YouTube 업로드 완료!", description: data.videoUrl ? `영상: ${data.videoUrl}` : undefined });
+      } else {
+        toast({ title: "업로드 실패", description: data.error, variant: "destructive" });
+      }
+    },
+    onError: (e: Error) => toast({ title: e.message.includes("로그인") ? "YouTube 로그인 필요" : "업로드 실패", description: e.message, variant: e.message.includes("로그인") ? "default" : "destructive" }),
+  });
+
   const saveMutation = useMutation({
     mutationFn: () => apiRequest("/api/monthly-content/save", {
       method: "POST",
@@ -255,17 +287,28 @@ export default function MonthlyHopeContent() {
         <div className="space-y-5">
 
           {/* 상단 액션 */}
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between flex-wrap gap-2">
             <Button variant="outline" size="sm" className="gap-1.5"
               onClick={() => generateMutation.mutate()} disabled={generateMutation.isPending}>
               <RefreshCw className="w-3.5 h-3.5" />전체 재생성
             </Button>
-            <Button size="sm"
-              className="gap-2 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white"
-              onClick={() => saveMutation.mutate()}
-              disabled={saveMutation.isPending || !activeStyle}>
-              {saveMutation.isPending ? <><Loader2 className="w-3.5 h-3.5 animate-spin" />저장 중...</> : <><Save className="w-3.5 h-3.5" />저장</>}
-            </Button>
+            <div className="flex gap-2">
+              {/* YouTube 발행 버튼 */}
+              <Button size="sm" variant="outline"
+                className="gap-1.5 text-red-600 border-red-300 hover:bg-red-50 dark:hover:bg-red-950"
+                onClick={() => youtubeMutation.mutate()}
+                disabled={youtubeMutation.isPending || !generated?.imageBase64}>
+                {youtubeMutation.isPending
+                  ? <><Loader2 className="w-3.5 h-3.5 animate-spin" />업로드 중...</>
+                  : <><Youtube className="w-3.5 h-3.5" />YouTube 발행</>}
+              </Button>
+              <Button size="sm"
+                className="gap-2 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white"
+                onClick={() => saveMutation.mutate()}
+                disabled={saveMutation.isPending || !activeStyle}>
+                {saveMutation.isPending ? <><Loader2 className="w-3.5 h-3.5 animate-spin" />저장 중...</> : <><Save className="w-3.5 h-3.5" />저장</>}
+              </Button>
+            </div>
           </div>
 
           {/* ── 5가지 스타일 카드 ── */}

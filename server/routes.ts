@@ -2439,6 +2439,76 @@ Solution: ${brandAnalysis.solution || "없음"}`;
     }
   });
 
+  // ── 월간 희망 콘텐츠 → YouTube 업로드 ────────────────────────────────────────
+  app.post("/api/monthly-content/youtube-upload", isAuthenticated, async (req: any, res) => {
+    const userId = (req.user as any).id;
+    const { imageBase64, title, description, hashtags, privacyStatus } = req.body;
+
+    if (!imageBase64) return res.status(400).json({ error: "이미지 데이터가 없습니다." });
+
+    try {
+      const { isYouTubeAuthenticated, uploadVideoToYouTube } = await import("./youtube-upload");
+
+      if (!isYouTubeAuthenticated(userId)) {
+        return res.status(401).json({ error: "YouTube 로그인이 필요합니다.", needAuth: true });
+      }
+
+      const fs = await import("fs/promises");
+      const { execFile } = await import("child_process");
+      const { promisify } = await import("util");
+      const pathMod = await import("path");
+      const execFileAsync = promisify(execFile);
+
+      const tmpDir = "/tmp/monthly";
+      await fs.mkdir(tmpDir, { recursive: true });
+
+      const ts = Date.now();
+      const imgPath = pathMod.join(tmpDir, `monthly-${ts}.jpg`);
+      const mp4Path = pathMod.join(tmpDir, `monthly-${ts}.mp4`);
+
+      // 이미지 저장
+      const b64 = imageBase64.replace(/^data:\w+\/\w+;base64,/, "");
+      await fs.writeFile(imgPath, Buffer.from(b64, "base64"));
+
+      // ffmpeg: 이미지 → 20초 MP4 (1080x1350, 세로 영상)
+      await execFileAsync("ffmpeg", [
+        "-y",
+        "-loop", "1",
+        "-i", imgPath,
+        "-c:v", "libx264",
+        "-t", "20",
+        "-preset", "fast",
+        "-crf", "23",
+        "-pix_fmt", "yuv420p",
+        "-vf", "scale=1080:1350:force_original_aspect_ratio=decrease,pad=1080:1350:(ow-iw)/2:(oh-ih)/2",
+        "-movflags", "+faststart",
+        mp4Path,
+      ], { maxBuffer: 1024 * 1024 * 200 });
+
+      // YouTube 업로드
+      const tags = Array.isArray(hashtags)
+        ? hashtags.map((t: string) => t.replace(/^#/, "")).slice(0, 15)
+        : [];
+
+      const result = await uploadVideoToYouTube(userId, mp4Path, {
+        title: title || "월간 희망 메시지",
+        description: description || "",
+        tags,
+        privacyStatus: privacyStatus || "private",
+        categoryId: "22", // People & Blogs
+      });
+
+      // 임시 파일 정리
+      await fs.unlink(imgPath).catch(() => {});
+      await fs.unlink(mp4Path).catch(() => {});
+
+      res.json(result);
+    } catch (e: any) {
+      console.error("[Monthly YouTube Upload]", e.message);
+      res.status(500).json({ error: e.message });
+    }
+  });
+
   const httpServer = createServer(app);
 
   return httpServer;
