@@ -465,6 +465,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const [width, height] = format === "feed" ? [1080, 1350] : [1080, 1920];
       console.log(`Converting ${contentId}.webm → MP4 (${format} ${width}x${height})...`);
 
+      // ffmpeg 설치 여부 확인
+      try {
+        await execFileAsync("ffmpeg", ["-version"]);
+      } catch {
+        return res.status(500).json({ error: "ffmpeg가 서버에 설치되어 있지 않습니다. 서버 관리자에게 문의하세요." });
+      }
+
       await execFileAsync("ffmpeg", [
         "-y",
         "-i", webmPath,
@@ -477,7 +484,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         "-pix_fmt", "yuv420p",
         "-vf", `scale=${width}:${height}:force_original_aspect_ratio=decrease,pad=${width}:${height}:(ow-iw)/2:(oh-ih)/2`,
         mp4Path,
-      ]);
+      ], { maxBuffer: 1024 * 1024 * 100 });
 
       console.log(`MP4 conversion done: ${contentId}${suffix}.mp4`);
       res.json({ success: true, url: urlPath });

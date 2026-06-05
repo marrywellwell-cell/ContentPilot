@@ -2,7 +2,7 @@ services:
   - type: web
     name: contentpilot
     runtime: node
-    buildCommand: npm install --include=dev && npm run build
+    buildCommand: apt-get update && apt-get install -y ffmpeg && npm install --include=dev && npm run build
     startCommand: npm run start
     healthCheckPath: /api/auth/user
     envVars:
