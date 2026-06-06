@@ -475,7 +475,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         : `/api/shorts-video/mp4/${contentId}`;
 
       // Return cached MP4 if already converted
-      if (fs.existsSync(mp4Path)) {
+      if (fsSync.existsSync(mp4Path)) {
         return res.json({ success: true, url: urlPath, cached: true });
       }
 

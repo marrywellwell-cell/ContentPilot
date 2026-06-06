@@ -198,11 +198,16 @@ export default function InventionIdea() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ format }),
       });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({ error: "알 수 없는 오류" }));
+        throw new Error(errData.error || "변환 실패");
+      }
       setReady(prev => new Set([...prev, contentId]));
       toast({ title: "변환 완료!", description: `인스타그램 ${label} MP4가 준비되었습니다.` });
-    } catch (err) {
-      toast({ title: "변환 실패", description: "MP4 변환 중 오류가 발생했습니다.", variant: "destructive" });
+    } catch (err: any) {
+      const msg = err?.message || "MP4 변환 중 오류가 발생했습니다.";
+      const isReRecord = msg.includes("다시 녹화");
+      toast({ title: "변환 실패", description: isReRecord ? "서버 재시작으로 영상이 초기화됐습니다. 영상을 다시 녹화해주세요." : msg, variant: "destructive" });
     } finally {
       setConverting(prev => { const s = new Set(prev); s.delete(contentId); return s; });
     }
