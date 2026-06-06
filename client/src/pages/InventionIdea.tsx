@@ -728,7 +728,6 @@ export default function InventionIdea() {
     }
 
     let combinedStream: MediaStream | null = null;
-    let audioCtx: AudioContext | null = null;
 
     try {
       const canvas = videoCanvasRef.current;
@@ -753,56 +752,7 @@ export default function InventionIdea() {
       }
       const totalSeconds = totalFrames / fps;
 
-      // --- Phase 1: Audio — either direct voice file OR TTS per scene ---
-      setVideoPhase("tts");
-      const ttsBuffers: ArrayBuffer[] = [];
-      let ttsOk = true;
-      let directVoiceBuffer: ArrayBuffer | null = null;
-
-      const hasVoice = storedVoiceExists || !!uploadedVoiceBuffer;
-      const shouldUseDirectVoice = useDirectVoice && hasVoice;
-
-      if (shouldUseDirectVoice) {
-        // Load the stored voice file directly from the server
-        try {
-          const res = await fetch("/api/user-voice", { credentials: "include" });
-          if (!res.ok) throw new Error("음성 파일 로드 실패");
-          directVoiceBuffer = await res.arrayBuffer();
-          setVideoProgress(25);
-        } catch (err) {
-          console.warn("Direct voice load failed:", err);
-          toast({ title: "음성 파일 로드 실패", description: "AI 음성으로 대체합니다.", variant: "destructive" });
-        }
-      } else {
-        // Generate TTS per scene
-        for (let i = 0; i < scenes.length; i++) {
-          try {
-            const res = await fetch("/api/tts/generate", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              credentials: "include",
-              body: JSON.stringify({
-                text: scenes[i].narration,
-                ...(clonedVoiceId ? { voiceId: clonedVoiceId } : {}),
-                ...(hasVoice && !useDirectVoice ? { useStoredVoice: true } : {}),
-              }),
-            });
-            if (!res.ok) throw new Error(await res.text());
-            const data = await res.json();
-            const binaryStr = atob(data.audio);
-            const bytes = new Uint8Array(binaryStr.length);
-            for (let j = 0; j < binaryStr.length; j++) bytes[j] = binaryStr.charCodeAt(j);
-            ttsBuffers.push(bytes.buffer);
-          } catch (err) {
-            console.warn("TTS failed for scene", i, err);
-            ttsOk = false;
-            break;
-          }
-          setVideoProgress(Math.round(5 + ((i + 1) / scenes.length) * 20));
-        }
-      }
-
-      // --- Phase 2: Load images ---
+      // --- Phase 1: Load images ---
       setVideoPhase("images");
       const loadedImages: HTMLImageElement[] = [];
       for (let i = 0; i < Math.min(images.length, scenes.length); i++) {
@@ -826,63 +776,11 @@ export default function InventionIdea() {
         return;
       }
 
-      // --- Phase 3: Decode audio buffers (schedule AFTER recorder starts) ---
-      let audioDest: MediaStreamAudioDestinationNode | null = null;
-      let decodedAudioBuffers: AudioBuffer[] = [];
-      let decodedDirectVoice: AudioBuffer | null = null;
-      const hasAudioData = (ttsOk && ttsBuffers.length > 0) || !!directVoiceBuffer;
-
-      if (hasAudioData) {
-        try {
-          audioCtx = new AudioContext();
-          await audioCtx.resume();
-          audioDest = audioCtx.createMediaStreamDestination();
-
-          if (directVoiceBuffer) {
-            // Decode single uploaded voice file
-            try {
-              decodedDirectVoice = await audioCtx.decodeAudioData(directVoiceBuffer.slice(0));
-            } catch (err) {
-              console.warn("Direct voice decode failed:", err);
-            }
-          } else {
-            // Decode per-scene TTS buffers
-            for (let i = 0; i < scenes.length; i++) {
-              try {
-                const decoded = await audioCtx.decodeAudioData(ttsBuffers[i].slice(0));
-                decodedAudioBuffers.push(decoded);
-              } catch (err) {
-                console.warn("Audio decode failed for scene", i, err);
-                decodedAudioBuffers.push(null as any);
-              }
-            }
-          }
-        } catch (err) {
-          console.warn("AudioContext setup failed:", err);
-          audioDest = null;
-          if (audioCtx) { audioCtx.close(); audioCtx = null; }
-        }
-      }
-
-      // --- Phase 4: Setup MediaRecorder ---
+      // --- Phase 2: Setup MediaRecorder (video only — audio added server-side via ffmpeg) ---
       const videoStream = canvas.captureStream(fps);
-
-      // vp8,opus first — most widely supported WebM codec combination
-      const mimeTypeCandidates = audioDest
-        ? ["video/webm;codecs=vp8,opus", "video/webm;codecs=vp9,opus", "video/webm"]
-        : ["video/webm;codecs=vp8", "video/webm;codecs=vp9", "video/webm"];
+      const mimeTypeCandidates = ["video/webm;codecs=vp8", "video/webm;codecs=vp9", "video/webm"];
       const mimeType = mimeTypeCandidates.find(m => MediaRecorder.isTypeSupported(m)) ?? "video/webm";
-
-      // Build combined stream
-      let hasAudio = false;
-      if (audioDest) {
-        const audioTracks = audioDest.stream.getAudioTracks();
-        if (audioTracks.length > 0) {
-          combinedStream = new MediaStream([...videoStream.getVideoTracks(), ...audioTracks]);
-          hasAudio = true;
-        }
-      }
-      if (!hasAudio) combinedStream = videoStream;
+      combinedStream = videoStream;
 
       const mediaRecorder = new MediaRecorder(combinedStream, {
         mimeType,
@@ -1020,50 +918,6 @@ export default function InventionIdea() {
         drawFrame();
         mediaRecorder.start(200);
 
-        // Schedule audio AFTER recorder starts — so no audio is missed
-        if (audioCtx && audioDest) {
-          const startOffset = audioCtx.currentTime + 0.3;
-
-          if (decodedDirectVoice) {
-            // Play the user's uploaded voice file directly as the single audio track
-            const src = audioCtx.createBufferSource();
-            const gain = audioCtx.createGain();
-            src.buffer = decodedDirectVoice;
-            gain.gain.setValueAtTime(1.0, startOffset);
-            // Fade out near the end of the audio or video, whichever is shorter
-            const endTime = startOffset + Math.min(decodedDirectVoice.duration, totalSeconds);
-            gain.gain.setValueAtTime(1.0, Math.max(startOffset, endTime - 0.5));
-            gain.gain.linearRampToValueAtTime(0.0, endTime);
-            src.connect(gain);
-            gain.connect(audioDest);
-            src.start(startOffset);
-            // Add light background music alongside the voice
-            createClassicalMusic(audioCtx, audioDest, totalSeconds, 0.15);
-          } else if (decodedAudioBuffers.length > 0) {
-            // Per-scene TTS narration
-            let timeOffset = startOffset;
-            for (let i = 0; i < decodedAudioBuffers.length; i++) {
-              const decoded = decodedAudioBuffers[i];
-              if (decoded) {
-                const src = audioCtx.createBufferSource();
-                const gain = audioCtx.createGain();
-                src.buffer = decoded;
-                const audioDur = decoded.duration;
-                const fadeStart = timeOffset + Math.max(0, audioDur - 0.3);
-                const fadeEnd = timeOffset + audioDur;
-                gain.gain.setValueAtTime(0.9, timeOffset);
-                gain.gain.setValueAtTime(0.9, fadeStart);
-                gain.gain.linearRampToValueAtTime(0.0, fadeEnd);
-                src.connect(gain);
-                gain.connect(audioDest);
-                src.start(timeOffset);
-              }
-              timeOffset += sceneDurations[i] ?? 5;
-            }
-            createClassicalMusic(audioCtx, audioDest, totalSeconds);
-          }
-        }
-
         requestAnimationFrame(renderLoop);
       });
 
@@ -1081,11 +935,7 @@ export default function InventionIdea() {
       setGeneratedVideoUrl(videoUrl);
       setVideoProgress(100);
 
-      const audioMsg = decodedDirectVoice
-        ? " 업로드한 내 목소리가 영상 오디오로 적용되었습니다."
-        : clonedVoiceId ? " 복제된 내 목소리로 나레이션됩니다."
-        : ttsOk ? " AI 음성 나레이션과 배경 음악이 포함되었습니다." : " (음성 생성 실패 - 영상만 포함)";
-      toast({ title: "영상 생성 완료!", description: `유튜브 숏츠 영상이 생성되었습니다.${audioMsg}` });
+      toast({ title: "영상 생성 완료!", description: "영상이 생성되었습니다. MP4 변환 시 음성이 추가됩니다." });
 
       // Auto-save video to server for persistent storage
       const contentId = contentData.id;
@@ -1112,7 +962,6 @@ export default function InventionIdea() {
       toast({ title: "영상 생성 실패", description: "영상 생성 중 오류가 발생했습니다.", variant: "destructive" });
     } finally {
       if (combinedStream) combinedStream.getTracks().forEach(track => track.stop());
-      if (audioCtx) audioCtx.close();
       setIsGeneratingVideo(false);
     }
   };
