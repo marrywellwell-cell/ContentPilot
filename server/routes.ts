@@ -439,11 +439,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // ── 서버 사이드 영상 생성: 이미지+씬 → ffmpeg MP4 (브라우저 captureStream 크래시 대체) ──
+  // ── 서버 사이드 영상 생성: 이미지+씬 → ffmpeg MP4 ──
   app.post("/api/shorts-video/server-generate/:contentId", isAuthenticated, async (req: any, res) => {
     const { contentId } = req.params;
-    const { scenes, imageUrls } = req.body as { scenes: any[]; imageUrls: string[] };
-    if (!scenes?.length || !imageUrls?.length) {
+    const { scenes: rawScenes, imageUrls } = req.body as { scenes: any[]; imageUrls: string[] };
+    if (!rawScenes?.length || !imageUrls?.length) {
       return res.status(400).json({ error: "scenes와 imageUrls가 필요합니다." });
     }
     try {
@@ -454,37 +454,42 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const execFileAsync = promisify(execFile);
       const { createCanvas, loadImage } = await import("canvas");
 
-      const W = 1080, H = 1920;
+      // 씬 최대 3개, 씬당 최대 5초 (총 15초 이내 → 빠른 처리)
+      const scenes = rawScenes.slice(0, 3);
+      const W = 270, H = 480; // 작게 렌더 후 ffmpeg에서 업스케일
       const tmpDir = "/tmp/shorts-gen";
       const outDir = "/tmp/shorts";
       if (!fsSync.existsSync(tmpDir)) fsSync.mkdirSync(tmpDir, { recursive: true });
       if (!fsSync.existsSync(outDir)) fsSync.mkdirSync(outDir, { recursive: true });
 
-      // 1. 이미지 병렬 다운로드
+      // 1. 이미지 병렬 다운로드 (5초 타임아웃, 실패 시 null 폴백)
       const imgBuffers: (Buffer | null)[] = await Promise.all(
-        imageUrls.map(async (url) => {
+        imageUrls.slice(0, scenes.length).map(async (url) => {
           try {
-            const r = await fetch(url, { signal: AbortSignal.timeout(15000) });
+            const ctrl = new AbortController();
+            const tid = setTimeout(() => ctrl.abort(), 5000);
+            const r = await fetch(url, { signal: ctrl.signal });
+            clearTimeout(tid);
             if (!r.ok) return null;
             return Buffer.from(await r.arrayBuffer());
           } catch { return null; }
         })
       );
 
-      // 2. 씬별 프레임 이미지 생성 (Node Canvas)
+      // 2. 씬별 프레임 생성 (270×480 소형 캔버스)
       const frameFiles: string[] = [];
       const durations: number[] = [];
 
       for (let i = 0; i < scenes.length; i++) {
         const scene = scenes[i];
-        const durationSec = parseInt(String(scene.duration).match(/\d+/)?.[0] ?? "5");
+        const durationSec = Math.min(parseInt(String(scene.duration).match(/\d+/)?.[0] ?? "5"), 5);
         durations.push(Math.max(durationSec, 3));
 
         const canvas = createCanvas(W, H);
         const ctx = canvas.getContext("2d") as any;
 
-        // 배경 이미지
-        const imgBuf = imgBuffers[i % imgBuffers.length];
+        // 배경 이미지 or 그라데이션 폴백
+        const imgBuf = imgBuffers[i] ?? imgBuffers[0] ?? null;
         if (imgBuf) {
           try {
             const img = await loadImage(imgBuf);
@@ -492,29 +497,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
             const dw = img.width * scale, dh = img.height * scale;
             ctx.drawImage(img, (W - dw) / 2, (H - dh) / 2, dw, dh);
           } catch {
-            ctx.fillStyle = "#1a1a2e";
-            ctx.fillRect(0, 0, W, H);
+            const g = ctx.createLinearGradient(0, 0, 0, H);
+            g.addColorStop(0, "#1a1a2e"); g.addColorStop(1, "#0f3460");
+            ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
           }
         } else {
-          ctx.fillStyle = "#1a1a2e";
-          ctx.fillRect(0, 0, W, H);
+          const g = ctx.createLinearGradient(0, 0, 0, H);
+          g.addColorStop(0, "#1a1a2e"); g.addColorStop(1, "#0f3460");
+          ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
         }
 
-        // 어두운 오버레이
-        ctx.fillStyle = "rgba(0,0,0,0.50)";
-        ctx.fillRect(0, 0, W, H);
+        ctx.fillStyle = "rgba(0,0,0,0.50)"; ctx.fillRect(0, 0, W, H);
 
-        // 나레이션 텍스트
+        // 텍스트
         const text: string = scene.narration || "";
-        const fontSize = 68;
+        const fontSize = 17;
         ctx.font = `bold ${fontSize}px sans-serif`;
         ctx.fillStyle = "#ffffff";
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
-        ctx.shadowColor = "rgba(0,0,0,0.95)";
-        ctx.shadowBlur = 22;
+        ctx.shadowColor = "rgba(0,0,0,0.9)"; ctx.shadowBlur = 6;
 
-        const maxLineW = W * 0.80;
+        const maxLineW = W * 0.82;
         const words = text.split(/\s+/);
         const lines: string[] = [];
         let cur = "";
@@ -524,32 +528,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
           else cur = test;
         }
         if (cur) lines.push(cur);
-
-        const lineH = fontSize * 1.55;
+        const lineH = fontSize * 1.5;
         const startY = H * 0.72 - (lines.length * lineH) / 2;
         lines.forEach((l, li) => ctx.fillText(l, W / 2, startY + li * lineH));
 
-        // 씬 번호 표시
-        ctx.shadowBlur = 0;
-        ctx.font = "36px sans-serif";
-        ctx.fillStyle = "rgba(255,255,255,0.45)";
-        ctx.textAlign = "right";
-        ctx.fillText(`${i + 1}/${scenes.length}`, W - 40, H - 40);
-
         const framePath = pathMod.join(tmpDir, `${contentId}-f${i}.jpg`);
-        fsSync.writeFileSync(framePath, canvas.toBuffer("image/jpeg", { quality: 0.88 }));
+        fsSync.writeFileSync(framePath, canvas.toBuffer("image/jpeg", { quality: 0.80 }));
         frameFiles.push(framePath);
       }
 
-      // 3. ffmpeg: 프레임 이미지 → MP4 슬라이드쇼
+      // 3. ffmpeg: 프레임 → 1080×1920 MP4 (ultrafast 인코딩)
       const mp4Path = pathMod.join(outDir, `${contentId}.mp4`);
-
       const ffArgs: string[] = ["-y"];
       frameFiles.forEach((f, i) => { ffArgs.push("-loop", "1", "-t", String(durations[i]), "-i", f); });
 
-      // filter_complex: 각 입력 scale → concat
       const scaleFilters = frameFiles.map((_, i) =>
-        `[${i}:v]scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2,setsar=1[v${i}]`
+        `[${i}:v]scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2,setsar=1[v${i}]`
       ).join(";");
       const concatIn = frameFiles.map((_, i) => `[v${i}]`).join("");
       const filterComplex = `${scaleFilters};${concatIn}concat=n=${frameFiles.length}:v=1:a=0[out]`;
@@ -558,26 +552,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
         "-filter_complex", filterComplex,
         "-map", "[out]",
         "-c:v", "libx264",
-        "-preset", "fast",
-        "-crf", "23",
+        "-preset", "ultrafast",
+        "-crf", "28",
         "-pix_fmt", "yuv420p",
         "-movflags", "+faststart",
         mp4Path
       );
 
-      await execFileAsync("ffmpeg", ffArgs, { maxBuffer: 1024 * 1024 * 300, timeout: 120000 });
+      await execFileAsync("ffmpeg", ffArgs, { maxBuffer: 1024 * 1024 * 200, timeout: 50000 });
 
-      // 4. 프레임 파일 정리
       frameFiles.forEach(f => { try { fsSync.unlinkSync(f); } catch {} });
-
-      // 5. DB 업데이트
       await storage.updateInventionContent(contentId, { shortsVideoUrl: `/api/shorts-video/mp4/${contentId}` } as any);
 
       console.log(`[server-generate] ${contentId} MP4 완료`);
       res.json({ success: true, url: `/api/shorts-video/mp4/${contentId}` });
     } catch (err: any) {
       console.error("[server-generate] 오류:", err?.message ?? err);
-      res.status(500).json({ error: err?.message ?? "서버 영상 생성 실패" });
+      res.status(500).json({ error: "영상 생성 실패: " + (err?.message ?? "알 수 없는 오류") });
     }
   });
 
