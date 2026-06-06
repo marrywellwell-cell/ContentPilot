@@ -712,256 +712,60 @@ export default function InventionIdea() {
     }
   };
 
+  // 서버에서 ffmpeg로 직접 MP4 생성 (브라우저 captureStream/MediaRecorder 크래시 대체)
   const generateShortsVideo = async () => {
     const contentData = generatedContent || viewingContent;
-    if (!contentData?.instagramImageUrls || contentData.instagramImageUrls.length === 0 || !contentData.shortsScenes) {
+    if (!contentData?.instagramImageUrls?.length || !contentData.shortsScenes) {
       toast({ title: "오류", description: "이미지와 스크립트가 필요합니다.", variant: "destructive" });
       return;
     }
 
     setIsGeneratingVideo(true);
-    setVideoProgress(0);
-    
+    setVideoProgress(10);
+    setVideoPhase("render");
+
     if (generatedVideoUrl) {
       URL.revokeObjectURL(generatedVideoUrl);
       setGeneratedVideoUrl(null);
     }
 
-    let combinedStream: MediaStream | null = null;
-
     try {
-      const canvas = videoCanvasRef.current;
-      if (!canvas) throw new Error("Canvas not available");
-      const ctx = canvas.getContext("2d");
-      if (!ctx) throw new Error("Canvas context not available");
+      toast({ title: "영상 생성 중...", description: "서버에서 MP4를 생성하고 있습니다. 30~60초 소요됩니다." });
 
-      canvas.width = 480;
-      canvas.height = 854;
-
-      const scenes = contentData.shortsScenes as ShortsScene[];
-      const images = contentData.instagramImageUrls;
-
-      const fps = 20;
-      const sceneDurations: number[] = [];
-      let totalFrames = 0;
-      for (const scene of scenes) {
-        const durationMatch = scene.duration.match(/(\d+)/);
-        const seconds = durationMatch ? parseInt(durationMatch[1]) : 5;
-        sceneDurations.push(seconds);
-        totalFrames += seconds * fps;
-      }
-      const totalSeconds = totalFrames / fps;
-
-      // --- Phase 1: Load images ---
-      setVideoPhase("images");
-      const loadedImages: HTMLImageElement[] = [];
-      for (let i = 0; i < Math.min(images.length, scenes.length); i++) {
-        try {
-          const img = new Image();
-          img.crossOrigin = "anonymous";
-          await new Promise((resolve, reject) => {
-            img.onload = resolve;
-            img.onerror = reject;
-            img.src = images[i];
-          });
-          loadedImages.push(img);
-        } catch (err) {
-          console.warn(`Failed to load image ${i}:`, err);
-        }
-        setVideoProgress(Math.round(25 + ((i + 1) / images.length) * 20));
-      }
-
-      if (loadedImages.length === 0) {
-        toast({ title: "오류", description: "이미지를 불러올 수 없습니다. 콘텐츠를 다시 생성해주세요.", variant: "destructive" });
-        return;
-      }
-
-      // --- Phase 2: Setup MediaRecorder (video only — audio added server-side via ffmpeg) ---
-      const videoStream = canvas.captureStream(fps);
-      const mimeTypeCandidates = ["video/webm;codecs=vp8", "video/webm;codecs=vp9", "video/webm"];
-      const mimeType = mimeTypeCandidates.find(m => MediaRecorder.isTypeSupported(m)) ?? "video/webm";
-      combinedStream = videoStream;
-
-      const mediaRecorder = new MediaRecorder(combinedStream, {
-        mimeType,
-        videoBitsPerSecond: 2000000,
+      const res = await fetch(`/api/shorts-video/server-generate/${contentData.id}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          scenes: contentData.shortsScenes,
+          imageUrls: contentData.instagramImageUrls,
+        }),
       });
 
-      // --- Phase 5: Render with requestAnimationFrame ---
-      setVideoPhase("render");
+      setVideoProgress(80);
 
-      // Make canvas tiny-but-visible so GPU commits frames for captureStream
-      canvas.style.position = "fixed";
-      canvas.style.right = "0";
-      canvas.style.bottom = "0";
-      canvas.style.left = "auto";
-      canvas.style.width = "2px";
-      canvas.style.height = "4px";
-      canvas.style.opacity = "0.01";
-      canvas.style.zIndex = "99999";
-      canvas.style.pointerEvents = "none";
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({ error: "영상 생성 실패" }));
+        throw new Error(errData.error || "영상 생성 실패");
+      }
 
-      // Pre-build drawing data for all frames (text wrapping per scene)
-      const sceneLines: string[][] = scenes.map((scene) => {
-        const maxWidth = canvas.width * 0.85;
-        ctx.font = "bold 56px sans-serif";
-        const words = scene.narration.split(" ");
-        const lines: string[] = [];
-        let currentLine = "";
-        for (const word of words) {
-          const testLine = currentLine ? currentLine + " " + word : word;
-          if (ctx.measureText(testLine).width > maxWidth) {
-            if (currentLine) lines.push(currentLine);
-            currentLine = word;
-          } else {
-            currentLine = testLine;
-          }
-        }
-        if (currentLine) lines.push(currentLine);
-        return lines;
-      });
+      const data = await res.json();
+      setVideoProgress(90);
 
-      const videoBlob = await new Promise<Blob>((resolveBlob) => {
-        const recordChunks: Blob[] = [];
-        let recordingStartMs = 0;
-        mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) recordChunks.push(e.data); };
-        mediaRecorder.onerror = (e) => console.error("MediaRecorder error:", e);
-        mediaRecorder.onstart = () => { recordingStartMs = performance.now(); };
-        mediaRecorder.onstop = () => {
-          // Skip fixWebmDuration to avoid heavy in-memory blob reprocessing (causes browser OOM crash)
-          const rawBlob = new Blob(recordChunks, { type: mimeType });
-          resolveBlob(rawBlob);
-        };
+      // MP4를 blob URL로 로드해 미리보기
+      const videoRes = await fetch(data.url, { credentials: "include" });
+      if (videoRes.ok) {
+        const blob = await videoRes.blob();
+        setGeneratedVideoUrl(URL.createObjectURL(blob));
+      }
 
-        let currentFrame = 0;
-        let sceneIndex = 0;
-        let frameInScene = 0;
-        let lastFrameTime: number | null = null;
-        const msPerFrame = 1000 / fps;
-
-        function drawFrame() {
-          const img = loadedImages[sceneIndex % loadedImages.length];
-          const sceneFrames = sceneDurations[sceneIndex] * fps;
-          const progress = frameInScene / sceneFrames;
-
-          ctx.fillStyle = "#000000";
-          ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-          const scale = 1.0 + progress * 0.1;
-          const offsetX = progress * 50;
-          const offsetY = progress * 30;
-          const imgAspect = img.width / img.height;
-          const canvasAspect = canvas.width / canvas.height;
-          let drawWidth, drawHeight, drawX, drawY;
-          if (imgAspect > canvasAspect) {
-            drawHeight = canvas.height * scale;
-            drawWidth = drawHeight * imgAspect;
-          } else {
-            drawWidth = canvas.width * scale;
-            drawHeight = drawWidth / imgAspect;
-          }
-          drawX = (canvas.width - drawWidth) / 2 - offsetX;
-          drawY = (canvas.height - drawHeight) / 2 - offsetY;
-          ctx.drawImage(img, drawX, drawY, drawWidth, drawHeight);
-
-          ctx.fillStyle = "rgba(0,0,0,0.5)";
-          ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-          ctx.fillStyle = "#ffffff";
-          ctx.font = "bold 56px sans-serif";
-          ctx.textAlign = "center";
-          ctx.textBaseline = "middle";
-          ctx.shadowColor = "rgba(0,0,0,0.8)";
-          ctx.shadowBlur = 10;
-          const lines = sceneLines[sceneIndex] || [];
-          const lineHeight = 70;
-          const textY = canvas.height * 0.75;
-          lines.forEach((line, i) => {
-            ctx.fillText(line, canvas.width / 2, textY + (i - lines.length / 2) * lineHeight);
-          });
-
-          ctx.shadowBlur = 0;
-          ctx.font = "36px sans-serif";
-          ctx.textAlign = "right";
-          ctx.textBaseline = "bottom";
-          ctx.fillStyle = "rgba(255,255,255,0.6)";
-          ctx.fillText("AI 생성", canvas.width - 30, canvas.height - 20);
-        }
-
-        function renderLoop(timestamp: number) {
-          if (currentFrame >= totalFrames) {
-            mediaRecorder.stop();
-            return;
-          }
-          if (lastFrameTime === null) lastFrameTime = timestamp;
-          const elapsed = timestamp - lastFrameTime;
-
-          if (elapsed >= msPerFrame) {
-            drawFrame();
-            currentFrame++;
-            frameInScene++;
-            const sceneFrames = sceneDurations[sceneIndex] * fps;
-            if (frameInScene >= sceneFrames && sceneIndex < scenes.length - 1) {
-              frameInScene = 0;
-              sceneIndex++;
-            }
-            // Throttle React re-render: update only every 20 frames (~1s)
-            if (currentFrame % 20 === 0) {
-              setVideoProgress(Math.round(45 + (currentFrame / totalFrames) * 50));
-            }
-            lastFrameTime = timestamp - (elapsed % msPerFrame);
-          }
-          requestAnimationFrame(renderLoop);
-        }
-
-        // Draw first frame immediately so MediaRecorder has something to capture
-        drawFrame();
-        mediaRecorder.start(200);
-
-        requestAnimationFrame(renderLoop);
-      });
-
-      // Restore canvas off-screen after recording
-      canvas.style.position = "fixed";
-      canvas.style.left = "-20000px";
-      canvas.style.right = "auto";
-      canvas.style.bottom = "auto";
-      canvas.style.width = "";
-      canvas.style.height = "";
-      canvas.style.opacity = "0";
-      canvas.style.zIndex = "";
-
-      const videoUrl = URL.createObjectURL(videoBlob);
-      setGeneratedVideoUrl(videoUrl);
       setVideoProgress(100);
-
-      toast({ title: "영상 생성 완료!", description: "영상이 생성되었습니다. MP4 변환 시 음성이 추가됩니다." });
-
-      // Auto-save video to server for persistent storage
-      const contentId = contentData.id;
-      if (contentId) {
-        setIsSavingVideo(true);
-        try {
-          const res = await fetch(`/api/shorts-video/save/${contentId}`, {
-            method: "POST",
-            headers: { "Content-Type": "video/webm" },
-            credentials: "include",
-            body: videoBlob,
-          });
-          if (res.ok) {
-            queryClient.invalidateQueries({ queryKey: ["/api/invention-contents"] });
-          }
-        } catch (err) {
-          console.warn("Auto-save video failed:", err);
-        } finally {
-          setIsSavingVideo(false);
-        }
-      }
-    } catch (error) {
-      console.error("Video generation error:", error);
-      toast({ title: "영상 생성 실패", description: "영상 생성 중 오류가 발생했습니다.", variant: "destructive" });
+      queryClient.invalidateQueries({ queryKey: ["/api/invention-contents"] });
+      toast({ title: "영상 생성 완료!", description: "서버에서 MP4 영상이 생성되었습니다." });
+    } catch (err: any) {
+      console.error("Video generation error:", err);
+      toast({ title: "영상 생성 실패", description: err?.message || "오류가 발생했습니다.", variant: "destructive" });
     } finally {
-      if (combinedStream) combinedStream.getTracks().forEach(track => track.stop());
       setIsGeneratingVideo(false);
     }
   };

@@ -439,6 +439,148 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ── 서버 사이드 영상 생성: 이미지+씬 → ffmpeg MP4 (브라우저 captureStream 크래시 대체) ──
+  app.post("/api/shorts-video/server-generate/:contentId", isAuthenticated, async (req: any, res) => {
+    const { contentId } = req.params;
+    const { scenes, imageUrls } = req.body as { scenes: any[]; imageUrls: string[] };
+    if (!scenes?.length || !imageUrls?.length) {
+      return res.status(400).json({ error: "scenes와 imageUrls가 필요합니다." });
+    }
+    try {
+      const fsSync = await import("fs");
+      const pathMod = await import("path");
+      const { execFile } = await import("child_process");
+      const { promisify } = await import("util");
+      const execFileAsync = promisify(execFile);
+      const { createCanvas, loadImage } = await import("canvas");
+
+      const W = 1080, H = 1920;
+      const tmpDir = "/tmp/shorts-gen";
+      const outDir = "/tmp/shorts";
+      if (!fsSync.existsSync(tmpDir)) fsSync.mkdirSync(tmpDir, { recursive: true });
+      if (!fsSync.existsSync(outDir)) fsSync.mkdirSync(outDir, { recursive: true });
+
+      // 1. 이미지 병렬 다운로드
+      const imgBuffers: (Buffer | null)[] = await Promise.all(
+        imageUrls.map(async (url) => {
+          try {
+            const r = await fetch(url, { signal: AbortSignal.timeout(15000) });
+            if (!r.ok) return null;
+            return Buffer.from(await r.arrayBuffer());
+          } catch { return null; }
+        })
+      );
+
+      // 2. 씬별 프레임 이미지 생성 (Node Canvas)
+      const frameFiles: string[] = [];
+      const durations: number[] = [];
+
+      for (let i = 0; i < scenes.length; i++) {
+        const scene = scenes[i];
+        const durationSec = parseInt(String(scene.duration).match(/\d+/)?.[0] ?? "5");
+        durations.push(Math.max(durationSec, 3));
+
+        const canvas = createCanvas(W, H);
+        const ctx = canvas.getContext("2d") as any;
+
+        // 배경 이미지
+        const imgBuf = imgBuffers[i % imgBuffers.length];
+        if (imgBuf) {
+          try {
+            const img = await loadImage(imgBuf);
+            const scale = Math.max(W / img.width, H / img.height);
+            const dw = img.width * scale, dh = img.height * scale;
+            ctx.drawImage(img, (W - dw) / 2, (H - dh) / 2, dw, dh);
+          } catch {
+            ctx.fillStyle = "#1a1a2e";
+            ctx.fillRect(0, 0, W, H);
+          }
+        } else {
+          ctx.fillStyle = "#1a1a2e";
+          ctx.fillRect(0, 0, W, H);
+        }
+
+        // 어두운 오버레이
+        ctx.fillStyle = "rgba(0,0,0,0.50)";
+        ctx.fillRect(0, 0, W, H);
+
+        // 나레이션 텍스트
+        const text: string = scene.narration || "";
+        const fontSize = 68;
+        ctx.font = `bold ${fontSize}px sans-serif`;
+        ctx.fillStyle = "#ffffff";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.shadowColor = "rgba(0,0,0,0.95)";
+        ctx.shadowBlur = 22;
+
+        const maxLineW = W * 0.80;
+        const words = text.split(/\s+/);
+        const lines: string[] = [];
+        let cur = "";
+        for (const w of words) {
+          const test = cur ? cur + " " + w : w;
+          if (ctx.measureText(test).width > maxLineW) { if (cur) lines.push(cur); cur = w; }
+          else cur = test;
+        }
+        if (cur) lines.push(cur);
+
+        const lineH = fontSize * 1.55;
+        const startY = H * 0.72 - (lines.length * lineH) / 2;
+        lines.forEach((l, li) => ctx.fillText(l, W / 2, startY + li * lineH));
+
+        // 씬 번호 표시
+        ctx.shadowBlur = 0;
+        ctx.font = "36px sans-serif";
+        ctx.fillStyle = "rgba(255,255,255,0.45)";
+        ctx.textAlign = "right";
+        ctx.fillText(`${i + 1}/${scenes.length}`, W - 40, H - 40);
+
+        const framePath = pathMod.join(tmpDir, `${contentId}-f${i}.jpg`);
+        fsSync.writeFileSync(framePath, canvas.toBuffer("image/jpeg", { quality: 0.88 }));
+        frameFiles.push(framePath);
+      }
+
+      // 3. ffmpeg: 프레임 이미지 → MP4 슬라이드쇼
+      const mp4Path = pathMod.join(outDir, `${contentId}.mp4`);
+
+      const ffArgs: string[] = ["-y"];
+      frameFiles.forEach((f, i) => { ffArgs.push("-loop", "1", "-t", String(durations[i]), "-i", f); });
+
+      // filter_complex: 각 입력 scale → concat
+      const scaleFilters = frameFiles.map((_, i) =>
+        `[${i}:v]scale=${W}:${H}:force_original_aspect_ratio=decrease,pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2,setsar=1[v${i}]`
+      ).join(";");
+      const concatIn = frameFiles.map((_, i) => `[v${i}]`).join("");
+      const filterComplex = `${scaleFilters};${concatIn}concat=n=${frameFiles.length}:v=1:a=0[out]`;
+
+      ffArgs.push(
+        "-filter_complex", filterComplex,
+        "-map", "[out]",
+        "-c:v", "libx264",
+        "-preset", "fast",
+        "-crf", "23",
+        "-pix_fmt", "yuv420p",
+        "-movflags", "+faststart",
+        mp4Path
+      );
+
+      await execFileAsync("ffmpeg", ffArgs, { maxBuffer: 1024 * 1024 * 300, timeout: 120000 });
+
+      // 4. 프레임 파일 정리
+      frameFiles.forEach(f => { try { fsSync.unlinkSync(f); } catch {} });
+
+      // 5. DB 업데이트
+      await storage.updateInventionContent(contentId, { shortsVideoUrl: `/api/shorts-video/mp4/${contentId}` } as any);
+
+      console.log(`[server-generate] ${contentId} MP4 완료`);
+      res.json({ success: true, url: `/api/shorts-video/mp4/${contentId}` });
+    } catch (err: any) {
+      console.error("[server-generate] 오류:", err?.message ?? err);
+      res.status(500).json({ error: err?.message ?? "서버 영상 생성 실패" });
+    }
+  });
+
   // Convert saved WebM to MP4 using FFmpeg
   app.post("/api/shorts-video/convert-mp4/:contentId", isAuthenticated, async (req: any, res) => {
     try {
