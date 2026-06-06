@@ -689,7 +689,8 @@ export default function InventionIdea() {
     const noteTime = 0.21;                          // ~142 BPM 8th note
     const notesPerMeasure = 8;
     const start = audioCtx.currentTime + 0.3;
-    const totalNotes = Math.ceil(duration / noteTime) + 16;
+    // Cap at 80 notes (~17s) to avoid creating thousands of Web Audio nodes that crash the browser
+    const totalNotes = Math.min(Math.ceil(duration / noteTime) + 16, 80);
 
     for (let i = 0; i < totalNotes; i++) {
       const measure = Math.floor(i / notesPerMeasure);
@@ -736,13 +737,13 @@ export default function InventionIdea() {
       const ctx = canvas.getContext("2d");
       if (!ctx) throw new Error("Canvas context not available");
 
-      canvas.width = 1080;
-      canvas.height = 1920;
+      canvas.width = 720;
+      canvas.height = 1280;
 
       const scenes = contentData.shortsScenes as ShortsScene[];
       const images = contentData.instagramImageUrls;
 
-      const fps = 30;
+      const fps = 24;
       const sceneDurations: number[] = [];
       let totalFrames = 0;
       for (const scene of scenes) {
@@ -886,7 +887,7 @@ export default function InventionIdea() {
 
       const mediaRecorder = new MediaRecorder(combinedStream, {
         mimeType,
-        videoBitsPerSecond: 4000000,
+        videoBitsPerSecond: 2000000,
       });
 
       // --- Phase 5: Render with requestAnimationFrame ---
