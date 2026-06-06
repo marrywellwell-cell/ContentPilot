@@ -17,7 +17,6 @@ import { stripBase64Images } from "@/lib/downloadImage";
 import { Loader2, Lightbulb, Download, Copy, Check, Sparkles, Trash2, Eye, ChevronLeft, ChevronRight, Instagram, Video, Plus, X, History, Film, FileText, Mic, Upload, Wand2, Send, PenLine } from "lucide-react";
 import { downloadImageViaServer } from "@/lib/downloadImage";
 import { Progress } from "@/components/ui/progress";
-import fixWebmDuration from "fix-webm-duration";
 
 interface InventionIdea {
   id: string;
@@ -737,13 +736,13 @@ export default function InventionIdea() {
       const ctx = canvas.getContext("2d");
       if (!ctx) throw new Error("Canvas context not available");
 
-      canvas.width = 720;
-      canvas.height = 1280;
+      canvas.width = 480;
+      canvas.height = 854;
 
       const scenes = contentData.shortsScenes as ShortsScene[];
       const images = contentData.instagramImageUrls;
 
-      const fps = 24;
+      const fps = 20;
       const sceneDurations: number[] = [];
       let totalFrames = 0;
       for (const scene of scenes) {
@@ -931,10 +930,9 @@ export default function InventionIdea() {
         mediaRecorder.onerror = (e) => console.error("MediaRecorder error:", e);
         mediaRecorder.onstart = () => { recordingStartMs = performance.now(); };
         mediaRecorder.onstop = () => {
-          const durationMs = performance.now() - recordingStartMs;
+          // Skip fixWebmDuration to avoid heavy in-memory blob reprocessing (causes browser OOM crash)
           const rawBlob = new Blob(recordChunks, { type: mimeType });
-          // Fix WebM duration header so browsers can play/seek the video
-          fixWebmDuration(rawBlob, durationMs, (fixedBlob: Blob) => resolveBlob(fixedBlob));
+          resolveBlob(rawBlob);
         };
 
         let currentFrame = 0;
@@ -1009,7 +1007,10 @@ export default function InventionIdea() {
               frameInScene = 0;
               sceneIndex++;
             }
-            setVideoProgress(Math.round(45 + (currentFrame / totalFrames) * 50));
+            // Throttle React re-render: update only every 20 frames (~1s)
+            if (currentFrame % 20 === 0) {
+              setVideoProgress(Math.round(45 + (currentFrame / totalFrames) * 50));
+            }
             lastFrameTime = timestamp - (elapsed % msPerFrame);
           }
           requestAnimationFrame(renderLoop);
