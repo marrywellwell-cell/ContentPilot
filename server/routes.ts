@@ -441,13 +441,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // ── 서버 사이드 영상 생성: 이미지+씬 → ffmpeg MP4 ──
-  app.post("/api/shorts-video/server-generate/:contentId", isAuthenticated, async (req: any, res) => {
-    const { contentId } = req.params;
-    const { scenes: rawScenes, imageUrls } = req.body as { scenes: any[]; imageUrls: string[] };
-    if (!rawScenes?.length || !imageUrls?.length) {
-      return res.status(400).json({ error: "scenes와 imageUrls가 필요합니다." });
-    }
+  // ── 서버 사이드 영상 생성: 백그라운드 처리 + 폴링 (Render 30초 타임아웃 우회) ──
+  const videoJobStore = new Map<string, { status: "processing" | "done" | "error"; url?: string; error?: string }>();
+
+  async function runVideoGenJob(contentId: string, scenes: any[], imageUrls: string[]) {
     try {
       const fsSync = await import("fs");
       const pathMod = await import("path");
@@ -456,32 +453,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const execFileAsync = promisify(execFile);
       const { createCanvas, loadImage } = await import("canvas");
 
-      // 씬 최대 3개, 씬당 최대 5초 (총 15초 이내 → 빠른 처리)
-      const scenes = rawScenes.slice(0, 3);
-      const W = 270, H = 480; // 작게 렌더 후 ffmpeg에서 업스케일
+      const W = 270, H = 480;
       const tmpDir = "/tmp/shorts-gen";
       const outDir = "/tmp/shorts";
       if (!fsSync.existsSync(tmpDir)) fsSync.mkdirSync(tmpDir, { recursive: true });
       if (!fsSync.existsSync(outDir)) fsSync.mkdirSync(outDir, { recursive: true });
 
-      // 1. 이미지 병렬 다운로드 (5초 타임아웃, 실패 시 null 폴백)
+      // 이미지 병렬 다운로드 (8초 타임아웃)
       const imgBuffers: (Buffer | null)[] = await Promise.all(
         imageUrls.slice(0, scenes.length).map(async (url) => {
           try {
             const ctrl = new AbortController();
-            const tid = setTimeout(() => ctrl.abort(), 5000);
+            const tid = setTimeout(() => ctrl.abort(), 8000);
             const r = await fetch(url, { signal: ctrl.signal });
             clearTimeout(tid);
-            if (!r.ok) return null;
-            return Buffer.from(await r.arrayBuffer());
+            return r.ok ? Buffer.from(await r.arrayBuffer()) : null;
           } catch { return null; }
         })
       );
 
-      // 2. 씬별 프레임 생성 (270×480 소형 캔버스)
+      // 씬별 프레임 생성
       const frameFiles: string[] = [];
       const durations: number[] = [];
-
       for (let i = 0; i < scenes.length; i++) {
         const scene = scenes[i];
         const durationSec = Math.min(parseInt(String(scene.duration).match(/\d+/)?.[0] ?? "5"), 5);
@@ -489,8 +482,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         const canvas = createCanvas(W, H);
         const ctx = canvas.getContext("2d") as any;
-
-        // 배경 이미지 or 그라데이션 폴백
         const imgBuf = imgBuffers[i] ?? imgBuffers[0] ?? null;
         if (imgBuf) {
           try {
@@ -498,36 +489,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
             const scale = Math.max(W / img.width, H / img.height);
             const dw = img.width * scale, dh = img.height * scale;
             ctx.drawImage(img, (W - dw) / 2, (H - dh) / 2, dw, dh);
-          } catch {
-            const g = ctx.createLinearGradient(0, 0, 0, H);
-            g.addColorStop(0, "#1a1a2e"); g.addColorStop(1, "#0f3460");
-            ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
-          }
-        } else {
+          } catch { /* fallback below */ }
+        }
+        if (!imgBuf) {
           const g = ctx.createLinearGradient(0, 0, 0, H);
           g.addColorStop(0, "#1a1a2e"); g.addColorStop(1, "#0f3460");
           ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
         }
+        ctx.fillStyle = "rgba(0,0,0,0.5)"; ctx.fillRect(0, 0, W, H);
 
-        ctx.fillStyle = "rgba(0,0,0,0.50)"; ctx.fillRect(0, 0, W, H);
-
-        // 텍스트
         const text: string = scene.narration || "";
         const fontSize = 17;
         ctx.font = `bold ${fontSize}px sans-serif`;
-        ctx.fillStyle = "#ffffff";
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
+        ctx.fillStyle = "#ffffff"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
         ctx.shadowColor = "rgba(0,0,0,0.9)"; ctx.shadowBlur = 6;
-
         const maxLineW = W * 0.82;
         const words = text.split(/\s+/);
         const lines: string[] = [];
         let cur = "";
         for (const w of words) {
           const test = cur ? cur + " " + w : w;
-          if (ctx.measureText(test).width > maxLineW) { if (cur) lines.push(cur); cur = w; }
-          else cur = test;
+          if (ctx.measureText(test).width > maxLineW) { if (cur) lines.push(cur); cur = w; } else cur = test;
         }
         if (cur) lines.push(cur);
         const lineH = fontSize * 1.5;
@@ -539,43 +521,64 @@ export async function registerRoutes(app: Express): Promise<Server> {
         frameFiles.push(framePath);
       }
 
-      // 3. ffmpeg: 프레임 → 1080×1920 MP4 (ultrafast 인코딩)
+      // ffmpeg: concat demuxer 방식 (filter_complex보다 안정적)
       const mp4Path = pathMod.join(outDir, `${contentId}.mp4`);
-      // ffmpeg 설치 여부 확인
-      try { await execFileAsync(ffmpegStaticPath ?? "ffmpeg", ["-version"]); }
-      catch { return res.status(500).json({ error: "ffmpeg가 서버에 설치되어 있지 않습니다. Render 대시보드 → Settings → Build Command에 'apt-get install -y ffmpeg &&' 를 추가해주세요." }); }
+      const concatTxt = pathMod.join(tmpDir, `${contentId}-concat.txt`);
+      let concatContent = "";
+      for (let i = 0; i < frameFiles.length; i++) {
+        concatContent += `file '${frameFiles[i]}'\nduration ${durations[i]}\n`;
+      }
+      concatContent += `file '${frameFiles[frameFiles.length - 1]}'\n`;
+      fsSync.writeFileSync(concatTxt, concatContent);
 
-      const ffArgs: string[] = ["-y"];
-      frameFiles.forEach((f, i) => { ffArgs.push("-loop", "1", "-t", String(durations[i]), "-i", f); });
-
-      const scaleFilters = frameFiles.map((_, i) =>
-        `[${i}:v]scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2,setsar=1[v${i}]`
-      ).join(";");
-      const concatIn = frameFiles.map((_, i) => `[v${i}]`).join("");
-      const filterComplex = `${scaleFilters};${concatIn}concat=n=${frameFiles.length}:v=1:a=0[out]`;
-
-      ffArgs.push(
-        "-filter_complex", filterComplex,
-        "-map", "[out]",
-        "-c:v", "libx264",
-        "-preset", "ultrafast",
-        "-crf", "28",
-        "-pix_fmt", "yuv420p",
-        "-movflags", "+faststart",
-        mp4Path
-      );
-
-      await execFileAsync(ffmpegStaticPath ?? "ffmpeg", ffArgs, { maxBuffer: 1024 * 1024 * 200, timeout: 50000 });
+      const ffBin = ffmpegStaticPath ?? "ffmpeg";
+      await execFileAsync(ffBin, [
+        "-y", "-f", "concat", "-safe", "0", "-i", concatTxt,
+        "-vf", "scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2",
+        "-c:v", "libx264", "-preset", "ultrafast", "-crf", "28",
+        "-pix_fmt", "yuv420p", "-movflags", "+faststart", mp4Path,
+      ], { maxBuffer: 1024 * 1024 * 200, timeout: 180000 });
 
       frameFiles.forEach(f => { try { fsSync.unlinkSync(f); } catch {} });
+      try { fsSync.unlinkSync(concatTxt); } catch {}
       await storage.updateInventionContent(contentId, { shortsVideoUrl: `/api/shorts-video/mp4/${contentId}` } as any);
-
-      console.log(`[server-generate] ${contentId} MP4 완료`);
-      res.json({ success: true, url: `/api/shorts-video/mp4/${contentId}` });
+      console.log(`[video-job] ${contentId} 완료`);
+      videoJobStore.set(contentId, { status: "done", url: `/api/shorts-video/mp4/${contentId}` });
     } catch (err: any) {
-      console.error("[server-generate] 오류:", err?.message ?? err);
-      res.status(500).json({ error: "영상 생성 실패: " + (err?.message ?? "알 수 없는 오류") });
+      console.error(`[video-job] ${contentId} 오류:`, err?.message ?? err);
+      videoJobStore.set(contentId, { status: "error", error: err?.message ?? "영상 생성 실패" });
     }
+  }
+
+  // 영상 생성 시작 → 즉시 응답 (백그라운드 처리)
+  app.post("/api/shorts-video/server-generate/:contentId", isAuthenticated, async (req: any, res) => {
+    const { contentId } = req.params;
+    const { scenes: rawScenes, imageUrls } = req.body as { scenes: any[]; imageUrls: string[] };
+    if (!rawScenes?.length || !imageUrls?.length) {
+      return res.status(400).json({ error: "scenes와 imageUrls가 필요합니다." });
+    }
+    const scenes = rawScenes.slice(0, 3);
+    videoJobStore.set(contentId, { status: "processing" });
+    // 백그라운드에서 실행 (await 없음 → 즉시 응답)
+    runVideoGenJob(contentId, scenes, imageUrls);
+    res.json({ status: "processing", jobId: contentId });
+  });
+
+  // 영상 생성 상태 조회
+  app.get("/api/shorts-video/job-status/:contentId", isAuthenticated, async (req: any, res) => {
+    const { contentId } = req.params;
+    const job = videoJobStore.get(contentId);
+    if (!job) {
+      // DB에서 확인 (이전에 생성된 영상)
+      const fsSync = await import("fs");
+      const pathMod = await import("path");
+      const mp4Path = pathMod.join("/tmp/shorts", `${contentId}.mp4`);
+      if (fsSync.existsSync(mp4Path)) {
+        return res.json({ status: "done", url: `/api/shorts-video/mp4/${contentId}` });
+      }
+      return res.json({ status: "not_found" });
+    }
+    res.json(job);
   });
 
   // Convert saved WebM to MP4 using FFmpeg

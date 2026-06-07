@@ -712,7 +712,7 @@ export default function InventionIdea() {
     }
   };
 
-  // 서버에서 ffmpeg로 직접 MP4 생성 (브라우저 captureStream/MediaRecorder 크래시 대체)
+  // 서버에서 ffmpeg로 MP4 생성 — 백그라운드 처리 + 폴링 (Render 30초 타임아웃 우회)
   const generateShortsVideo = async () => {
     const contentData = generatedContent || viewingContent;
     if (!contentData?.instagramImageUrls?.length || !contentData.shortsScenes) {
@@ -730,9 +730,8 @@ export default function InventionIdea() {
     }
 
     try {
-      toast({ title: "영상 생성 중...", description: "서버에서 MP4를 생성하고 있습니다. 30~60초 소요됩니다." });
-
-      const res = await fetch(`/api/shorts-video/server-generate/${contentData.id}`, {
+      // 1. 영상 생성 시작 요청 → 서버가 즉시 응답
+      const startRes = await fetch(`/api/shorts-video/server-generate/${contentData.id}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -741,27 +740,41 @@ export default function InventionIdea() {
           imageUrls: contentData.instagramImageUrls,
         }),
       });
-
-      setVideoProgress(80);
-
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({ error: "영상 생성 실패" }));
-        throw new Error(errData.error || "영상 생성 실패");
+      if (!startRes.ok) {
+        const e = await startRes.json().catch(() => ({ error: "영상 생성 시작 실패" }));
+        throw new Error(e.error || "영상 생성 시작 실패");
       }
 
-      const data = await res.json();
-      setVideoProgress(90);
+      toast({ title: "영상 생성 중...", description: "서버에서 MP4를 생성 중입니다. 완료까지 기다려주세요." });
+      setVideoProgress(20);
 
-      // MP4를 blob URL로 로드해 미리보기
-      const videoRes = await fetch(data.url, { credentials: "include" });
-      if (videoRes.ok) {
-        const blob = await videoRes.blob();
-        setGeneratedVideoUrl(URL.createObjectURL(blob));
+      // 2. 폴링 — 3초마다 상태 확인 (최대 3분)
+      const maxAttempts = 60;
+      for (let attempt = 0; attempt < maxAttempts; attempt++) {
+        await new Promise(r => setTimeout(r, 3000));
+        const statusRes = await fetch(`/api/shorts-video/job-status/${contentData.id}`, { credentials: "include" });
+        if (!statusRes.ok) continue;
+        const status = await statusRes.json();
+
+        if (status.status === "done") {
+          setVideoProgress(95);
+          // MP4를 blob URL로 로드해 미리보기
+          const videoRes = await fetch(status.url, { credentials: "include" });
+          if (videoRes.ok) {
+            const blob = await videoRes.blob();
+            setGeneratedVideoUrl(URL.createObjectURL(blob));
+          }
+          setVideoProgress(100);
+          queryClient.invalidateQueries({ queryKey: ["/api/invention-contents"] });
+          toast({ title: "영상 생성 완료!", description: "MP4 영상이 준비되었습니다." });
+          return;
+        } else if (status.status === "error") {
+          throw new Error(status.error || "영상 생성 실패");
+        }
+        // processing 중: 진행률 표시
+        setVideoProgress(Math.min(20 + attempt * 1.2, 90));
       }
-
-      setVideoProgress(100);
-      queryClient.invalidateQueries({ queryKey: ["/api/invention-contents"] });
-      toast({ title: "영상 생성 완료!", description: "서버에서 MP4 영상이 생성되었습니다." });
+      throw new Error("영상 생성 시간 초과. 다시 시도해주세요.");
     } catch (err: any) {
       console.error("Video generation error:", err);
       toast({ title: "영상 생성 실패", description: err?.message || "오류가 발생했습니다.", variant: "destructive" });
