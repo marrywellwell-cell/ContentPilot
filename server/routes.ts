@@ -466,6 +466,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!fsSync.existsSync(tmpDir)) fsSync.mkdirSync(tmpDir, { recursive: true });
       if (!fsSync.existsSync(outDir)) fsSync.mkdirSync(outDir, { recursive: true });
 
+      const ffBin = await getFfmpegPath();
+
       // 이미지 병렬 다운로드 (8초 타임아웃)
       const imgBuffers: (Buffer | null)[] = await Promise.all(
         imageUrls.slice(0, scenes.length).map(async (url) => {
@@ -479,14 +481,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
         })
       );
 
+      // ── TTS 나레이션 생성 (씬별) ──
+      const defaultDurations = scenes.map((s: any) =>
+        Math.max(Math.min(parseInt(String(s.duration).match(/\d+/)?.[0] ?? "5"), 5), 3)
+      );
+      const audioFiles: (string | null)[] = new Array(scenes.length).fill(null);
+      const frameDurations: number[] = [...defaultDurations];
+
+      for (let i = 0; i < scenes.length; i++) {
+        const narration = String(scenes[i].narration || "").trim().slice(0, 300);
+        if (!narration) continue;
+        try {
+          const audioPath = pathMod.join(tmpDir, `${contentId}-tts${i}.mp3`);
+          const { EdgeTTS } = await import("node-edge-tts") as any;
+          const tts = new EdgeTTS({
+            voice: "ko-KR-HyunsuMultilingualNeural",
+            lang: "ko-KR",
+            outputFormat: "audio-24khz-96kbitrate-mono-mp3",
+          });
+          await tts.ttsPromise(narration, audioPath);
+
+          if (fsSync.existsSync(audioPath) && fsSync.statSync(audioPath).size > 0) {
+            audioFiles[i] = audioPath;
+            const probe = await execFileAsync(ffBin, ["-i", audioPath, "-f", "null", "-"], {
+              maxBuffer: 1024 * 1024 * 5, timeout: 15000,
+            }).catch((e: any) => e);
+            const stderr: string = (probe as any).stderr ?? (probe as any).message ?? "";
+            const match = stderr.match(/Duration: (\d+):(\d+):([\d.]+)/);
+            if (match) {
+              const dur = parseInt(match[1]) * 3600 + parseInt(match[2]) * 60 + parseFloat(match[3]);
+              frameDurations[i] = Math.max(dur + 0.3, 2);
+            }
+          }
+        } catch (e: any) {
+          console.warn(`[video-job] TTS 씬${i} 실패:`, e?.message);
+        }
+      }
+
       // 씬별 프레임 생성
       const frameFiles: string[] = [];
-      const durations: number[] = [];
       for (let i = 0; i < scenes.length; i++) {
-        const scene = scenes[i];
-        const durationSec = Math.min(parseInt(String(scene.duration).match(/\d+/)?.[0] ?? "5"), 5);
-        durations.push(Math.max(durationSec, 3));
-
         const canvas = createCanvas(W, H);
         const ctx = canvas.getContext("2d") as any;
         const imgBuf = imgBuffers[i] ?? imgBuffers[0] ?? null;
@@ -496,7 +530,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             const scale = Math.max(W / img.width, H / img.height);
             const dw = img.width * scale, dh = img.height * scale;
             ctx.drawImage(img, (W - dw) / 2, (H - dh) / 2, dw, dh);
-          } catch { /* fallback below */ }
+          } catch { /* fallback */ }
         }
         if (!imgBuf) {
           const g = ctx.createLinearGradient(0, 0, 0, H);
@@ -505,7 +539,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
         ctx.fillStyle = "rgba(0,0,0,0.5)"; ctx.fillRect(0, 0, W, H);
 
-        const text: string = scene.narration || "";
+        const text: string = scenes[i].narration || "";
         const fontSize = 17;
         ctx.font = `bold ${fontSize}px sans-serif`;
         ctx.fillStyle = "#ffffff"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
@@ -528,23 +562,59 @@ export async function registerRoutes(app: Express): Promise<Server> {
         frameFiles.push(framePath);
       }
 
-      // ffmpeg: concat demuxer 방식 (filter_complex보다 안정적)
+      // ffmpeg: 비디오만 먼저 생성
+      const rawMp4 = pathMod.join(tmpDir, `${contentId}-raw.mp4`);
       const mp4Path = pathMod.join(outDir, `${contentId}.mp4`);
       const concatTxt = pathMod.join(tmpDir, `${contentId}-concat.txt`);
       let concatContent = "";
       for (let i = 0; i < frameFiles.length; i++) {
-        concatContent += `file '${frameFiles[i]}'\nduration ${durations[i]}\n`;
+        concatContent += `file '${frameFiles[i]}'\nduration ${frameDurations[i]}\n`;
       }
       concatContent += `file '${frameFiles[frameFiles.length - 1]}'\n`;
       fsSync.writeFileSync(concatTxt, concatContent);
 
-      const ffBin = await getFfmpegPath();
       await execFileAsync(ffBin, [
         "-y", "-f", "concat", "-safe", "0", "-i", concatTxt,
         "-vf", "scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2",
         "-c:v", "libx264", "-preset", "ultrafast", "-crf", "28",
-        "-pix_fmt", "yuv420p", "-movflags", "+faststart", mp4Path,
+        "-pix_fmt", "yuv420p", rawMp4,
       ], { maxBuffer: 1024 * 1024 * 200, timeout: 180000 });
+
+      // ── 오디오 합성 ──
+      const validAudioFiles = audioFiles.filter((f): f is string => !!f && fsSync.existsSync(f));
+      if (validAudioFiles.length > 0) {
+        let combinedAudio: string;
+        if (validAudioFiles.length === 1) {
+          combinedAudio = validAudioFiles[0];
+        } else {
+          combinedAudio = pathMod.join(tmpDir, `${contentId}-audio.mp3`);
+          const audioConcatTxt = pathMod.join(tmpDir, `${contentId}-aconcat.txt`);
+          let aContent = "";
+          for (const f of validAudioFiles) aContent += `file '${f}'\n`;
+          fsSync.writeFileSync(audioConcatTxt, aContent);
+          await execFileAsync(ffBin, [
+            "-y", "-f", "concat", "-safe", "0", "-i", audioConcatTxt,
+            "-c:a", "copy", combinedAudio,
+          ], { maxBuffer: 1024 * 1024 * 50, timeout: 60000 });
+          try { fsSync.unlinkSync(audioConcatTxt); } catch {}
+        }
+
+        await execFileAsync(ffBin, [
+          "-y", "-i", rawMp4, "-i", combinedAudio,
+          "-c:v", "copy", "-c:a", "aac", "-b:a", "128k",
+          "-shortest", "-movflags", "+faststart", mp4Path,
+        ], { maxBuffer: 1024 * 1024 * 200, timeout: 120000 });
+
+        try { fsSync.unlinkSync(rawMp4); } catch {}
+        if (combinedAudio !== validAudioFiles[0]) { try { fsSync.unlinkSync(combinedAudio); } catch {} }
+        for (const f of audioFiles) { if (f) try { fsSync.unlinkSync(f); } catch {} }
+      } else {
+        // 오디오 없으면 그대로 최종 경로로 이동
+        try { fsSync.renameSync(rawMp4, mp4Path); } catch {
+          fsSync.copyFileSync(rawMp4, mp4Path);
+          try { fsSync.unlinkSync(rawMp4); } catch {}
+        }
+      }
 
       frameFiles.forEach(f => { try { fsSync.unlinkSync(f); } catch {} });
       try { fsSync.unlinkSync(concatTxt); } catch {}
