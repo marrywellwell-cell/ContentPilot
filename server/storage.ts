@@ -10,6 +10,8 @@ export interface IStorage {
   upsertUser(user: UpsertUser): Promise<User>;
   listUsers(): Promise<User[]>;
   updateUserAdmin(id: string, isAdmin: boolean): Promise<User | undefined>;
+  updateUserVoice(id: string, voiceData: string | null): Promise<User | undefined>;
+  getUserVoice(id: string): Promise<string | null>;
   deleteUser(id: string): Promise<boolean>;
   
   // Brand analysis operations
@@ -156,14 +158,21 @@ export class MemStorage implements IStorage {
   async updateUserAdmin(id: string, isAdmin: boolean): Promise<User | undefined> {
     const existing = this.users.get(id);
     if (!existing) return undefined;
-    
-    const updated: User = {
-      ...existing,
-      isAdmin,
-      updatedAt: new Date(),
-    };
+    const updated: User = { ...existing, isAdmin, updatedAt: new Date() };
     this.users.set(id, updated);
     return updated;
+  }
+
+  async updateUserVoice(id: string, voiceData: string | null): Promise<User | undefined> {
+    const existing = this.users.get(id);
+    if (!existing) return undefined;
+    const updated: User = { ...existing, voiceData: voiceData ?? null, updatedAt: new Date() };
+    this.users.set(id, updated);
+    return updated;
+  }
+
+  async getUserVoice(id: string): Promise<string | null> {
+    return this.users.get(id)?.voiceData ?? null;
   }
 
   async deleteUser(id: string): Promise<boolean> {
@@ -778,6 +787,20 @@ export class PostgresStorage implements IStorage {
       .where(eq(users.id, id))
       .returning();
     return user;
+  }
+
+  async updateUserVoice(id: string, voiceData: string | null): Promise<User | undefined> {
+    const [user] = await this.db
+      .update(users)
+      .set({ voiceData: voiceData ?? null, updatedAt: new Date() })
+      .where(eq(users.id, id))
+      .returning();
+    return user;
+  }
+
+  async getUserVoice(id: string): Promise<string | null> {
+    const [user] = await this.db.select({ voiceData: users.voiceData }).from(users).where(eq(users.id, id));
+    return user?.voiceData ?? null;
   }
 
   async deleteUser(id: string): Promise<boolean> {

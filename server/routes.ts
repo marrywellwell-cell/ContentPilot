@@ -267,13 +267,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Normalize: replace trailing ! / ? with . so TTS intonation falls naturally at end
       const normalizedText = text.slice(0, 300).replace(/[!！?？]+$/, ".");
 
-      // If useStoredVoice flag, load the stored user voice file from disk
+      // If useStoredVoice flag, load the stored user voice from DB
       let resolvedReference = referenceAudio;
       if (useStoredVoice && !resolvedReference) {
-        const voicePath = path.join(process.cwd(), "server/assets/user-voice.m4a");
-        if (fs.existsSync(voicePath)) {
-          resolvedReference = fs.readFileSync(voicePath).toString("base64");
-          console.log("TTS: Using stored user voice as reference");
+        const uid = req.user?.id ?? req.user?.claims?.sub;
+        if (uid) {
+          const voiceBase64 = await storage.getUserVoice(uid).catch(() => null);
+          if (voiceBase64) {
+            resolvedReference = voiceBase64;
+            console.log("TTS: Using stored user voice (DB) as reference");
+          }
         }
       }
 
@@ -285,43 +288,44 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Save uploaded voice file to server for persistent voice cloning
+  // Save uploaded voice file → DB에 base64로 영구 저장 (재배포 후에도 유지)
   app.post("/api/user-voice/save", isAuthenticated, async (req: any, res) => {
     const { audioBase64 } = req.body;
     if (typeof audioBase64 !== "string") {
       return res.status(400).json({ error: "audioBase64 required" });
     }
     try {
-      const path = await import("path");
-      const fs = await import("fs");
-      const filePath = path.join(process.cwd(), "server/assets/user-voice.m4a");
+      const userId = req.user?.id ?? req.user?.claims?.sub;
+      if (!userId) return res.status(401).json({ error: "Unauthorized" });
 
-      // Empty string = delete (reset)
       if (!audioBase64) {
-        if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+        // 빈 문자열 = 삭제
+        await storage.updateUserVoice(userId, null);
         return res.json({ success: true, deleted: true });
       }
 
-      const audioBuffer = Buffer.from(audioBase64, "base64");
-      const assetsDir = path.join(process.cwd(), "server/assets");
-      if (!fs.existsSync(assetsDir)) fs.mkdirSync(assetsDir, { recursive: true });
-      fs.writeFileSync(filePath, audioBuffer);
-      console.log(`User voice saved: ${audioBuffer.length} bytes`);
-      res.json({ success: true, size: audioBuffer.length });
+      const size = Buffer.byteLength(audioBase64, "base64");
+      await storage.updateUserVoice(userId, audioBase64);
+      console.log(`User voice saved to DB: ${size} bytes (user ${userId})`);
+      res.json({ success: true, size });
     } catch (error: any) {
       console.error("Voice save error:", error);
       res.status(500).json({ error: "Failed to save voice file" });
     }
   });
 
-  // Check if a stored user voice exists
+  // Check if a stored user voice exists (DB)
   app.get("/api/user-voice/status", isAuthenticated, async (req: any, res) => {
-    const path = await import("path");
-    const fs = await import("fs");
-    const filePath = path.join(process.cwd(), "server/assets/user-voice.m4a");
-    const exists = fs.existsSync(filePath);
-    const size = exists ? fs.statSync(filePath).size : 0;
-    res.json({ exists, size });
+    try {
+      const userId = req.user?.id ?? req.user?.claims?.sub;
+      if (!userId) return res.status(401).json({ error: "Unauthorized" });
+      const voiceData = await storage.getUserVoice(userId);
+      const exists = !!voiceData && voiceData.length > 0;
+      const size = exists ? Buffer.byteLength(voiceData!, "base64") : 0;
+      res.json({ exists, size });
+    } catch {
+      res.json({ exists: false, size: 0 });
+    }
   });
 
   // Voice cloning: upload audio sample → create ElevenLabs instant voice → return voice_id
@@ -363,17 +367,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Serve user uploaded voice file
+  // Serve user uploaded voice file (DB에서 읽어 반환)
   app.get("/api/user-voice", isAuthenticated, async (req: any, res) => {
-    const path = await import("path");
-    const fs = await import("fs");
-    const filePath = path.join(process.cwd(), "server/assets/user-voice.m4a");
-    if (!fs.existsSync(filePath)) {
-      return res.status(404).json({ error: "No user voice file" });
+    try {
+      const userId = req.user?.id ?? req.user?.claims?.sub;
+      if (!userId) return res.status(401).json({ error: "Unauthorized" });
+      const voiceData = await storage.getUserVoice(userId);
+      if (!voiceData) return res.status(404).json({ error: "No user voice file" });
+      const buf = Buffer.from(voiceData, "base64");
+      res.setHeader("Content-Type", "audio/mp4");
+      res.setHeader("Cache-Control", "no-cache");
+      res.send(buf);
+    } catch (e: any) {
+      res.status(500).json({ error: "Failed to retrieve voice" });
     }
-    res.setHeader("Content-Type", "audio/mp4");
-    res.setHeader("Cache-Control", "no-cache");
-    fs.createReadStream(filePath).pipe(res);
   });
 
   // ─── Shorts Video: 메모리 + /tmp 이중 저장 (Render 임시 파일시스템 대응) ───
@@ -451,7 +458,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ── 서버 사이드 영상 생성: 백그라운드 처리 + 폴링 (Render 30초 타임아웃 우회) ──
   const videoJobStore = new Map<string, { status: "processing" | "done" | "error"; url?: string; error?: string }>();
 
-  async function runVideoGenJob(contentId: string, scenes: any[], imageUrls: string[], useDirectVoice = false) {
+  async function runVideoGenJob(contentId: string, scenes: any[], imageUrls: string[], useDirectVoice = false, userId?: string) {
     try {
       const fsSync = await import("fs");
       const pathMod = await import("path");
@@ -489,25 +496,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const frameDurations: number[] = [...defaultDurations];
       let directVoicePath: string | null = null;
 
-      if (useDirectVoice) {
-        // 사용자 업로드 목소리 파일 사용
-        const voiceSrc = pathMod.join(process.cwd(), "server/assets/user-voice.m4a");
-        if (fsSync.existsSync(voiceSrc) && fsSync.statSync(voiceSrc).size > 0) {
-          directVoicePath = voiceSrc;
-          // 음성 총 길이를 씬 수로 균등 분배해 각 씬 재생 시간 설정
-          const probe = await execFileAsync(ffBin, ["-i", voiceSrc, "-f", "null", "-"], {
-            maxBuffer: 1024 * 1024 * 5, timeout: 15000,
-          }).catch((e: any) => e);
-          const stderr: string = (probe as any).stderr ?? (probe as any).message ?? "";
-          const match = stderr.match(/Duration: (\d+):(\d+):([\d.]+)/);
-          if (match) {
-            const totalDur = parseInt(match[1]) * 3600 + parseInt(match[2]) * 60 + parseFloat(match[3]);
-            const perScene = Math.max(totalDur / scenes.length, 2);
-            for (let i = 0; i < frameDurations.length; i++) frameDurations[i] = perScene;
-            console.log(`[video-job] 사용자 목소리 사용: ${totalDur.toFixed(1)}s → 씬당 ${perScene.toFixed(1)}s`);
+      if (useDirectVoice && userId) {
+        // DB에서 사용자 목소리 base64 로드 → /tmp에 임시 파일로 저장
+        try {
+          const voiceBase64 = await storage.getUserVoice(userId);
+          if (voiceBase64 && voiceBase64.length > 0) {
+            const voiceTmp = pathMod.join(tmpDir, `${contentId}-uv.m4a`);
+            fsSync.writeFileSync(voiceTmp, Buffer.from(voiceBase64, "base64"));
+            directVoicePath = voiceTmp;
+            // 음성 총 길이를 씬 수로 균등 분배해 각 씬 재생 시간 설정
+            const probe = await execFileAsync(ffBin, ["-i", voiceTmp, "-f", "null", "-"], {
+              maxBuffer: 1024 * 1024 * 5, timeout: 15000,
+            }).catch((e: any) => e);
+            const stderr: string = (probe as any).stderr ?? (probe as any).message ?? "";
+            const match = stderr.match(/Duration: (\d+):(\d+):([\d.]+)/);
+            if (match) {
+              const totalDur = parseInt(match[1]) * 3600 + parseInt(match[2]) * 60 + parseFloat(match[3]);
+              const perScene = Math.max(totalDur / scenes.length, 2);
+              for (let i = 0; i < frameDurations.length; i++) frameDurations[i] = perScene;
+              console.log(`[video-job] 사용자 목소리(DB) 사용: ${totalDur.toFixed(1)}s → 씬당 ${perScene.toFixed(1)}s`);
+            }
+          } else {
+            console.warn("[video-job] DB에 목소리 없음, TTS로 fallback");
           }
-        } else {
-          console.warn("[video-job] 사용자 목소리 파일 없음, TTS로 fallback");
+        } catch (e: any) {
+          console.warn("[video-job] 목소리 로드 실패, TTS fallback:", e?.message);
         }
       }
 
@@ -637,10 +650,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ], { maxBuffer: 1024 * 1024 * 200, timeout: 120000 });
 
         try { fsSync.unlinkSync(rawMp4); } catch {}
-        // TTS 임시 파일만 삭제 (사용자 목소리는 유지)
-        if (!directVoicePath) {
+        // 임시 오디오 파일 정리
+        if (directVoicePath) {
+          try { fsSync.unlinkSync(directVoicePath); } catch {}
+        } else {
           for (const f of audioFiles) { if (f) try { fsSync.unlinkSync(f); } catch {} }
-          if (finalAudio !== audioFiles.find(f => f === finalAudio)) { try { fsSync.unlinkSync(finalAudio); } catch {} }
+          if (finalAudio && !audioFiles.includes(finalAudio)) { try { fsSync.unlinkSync(finalAudio); } catch {} }
         }
       } else {
         // 오디오 없으면 그대로 최종 경로로 이동
@@ -669,9 +684,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.status(400).json({ error: "scenes와 imageUrls가 필요합니다." });
     }
     const scenes = rawScenes.slice(0, 3);
+    const userId = req.user?.id ?? req.user?.claims?.sub;
     videoJobStore.set(contentId, { status: "processing" });
     // 백그라운드에서 실행 (await 없음 → 즉시 응답)
-    runVideoGenJob(contentId, scenes, imageUrls, !!useDirectVoice);
+    runVideoGenJob(contentId, scenes, imageUrls, !!useDirectVoice, userId);
     res.json({ status: "processing", jobId: contentId });
   });
 

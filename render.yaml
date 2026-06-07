@@ -3,7 +3,7 @@ services:
     name: contentpilot
     runtime: node
     buildCommand: npm install --include=dev && npm run build
-    startCommand: npm run start
+    startCommand: npm run db:push && npm run start
     healthCheckPath: /api/auth/user
     envVars:
       - key: NODE_ENV
