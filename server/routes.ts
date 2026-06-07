@@ -288,25 +288,48 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Save uploaded voice file → DB에 base64로 영구 저장 (재배포 후에도 유지)
+  // 목소리 파일 경로 헬퍼 (파일시스템 fallback용)
+  const getVoiceFsPath = async () => {
+    const pathMod = await import("path");
+    const fsSync = await import("fs");
+    const assetsDir = pathMod.join(process.cwd(), "server/assets");
+    if (!fsSync.existsSync(assetsDir)) fsSync.mkdirSync(assetsDir, { recursive: true });
+    return pathMod.join(assetsDir, "user-voice.m4a");
+  };
+
+  // Save uploaded voice file → DB(영구) + 파일시스템(임시 fallback) 이중 저장
   app.post("/api/user-voice/save", isAuthenticated, async (req: any, res) => {
     const { audioBase64 } = req.body;
     if (typeof audioBase64 !== "string") {
       return res.status(400).json({ error: "audioBase64 required" });
     }
     try {
-      const userId = req.user?.id ?? req.user?.claims?.sub;
+      const userId = (req.user as any)?.id;
       if (!userId) return res.status(401).json({ error: "Unauthorized" });
+      const fsSync = await import("fs");
+      const voicePath = await getVoiceFsPath();
 
       if (!audioBase64) {
         // 빈 문자열 = 삭제
-        await storage.updateUserVoice(userId, null);
+        try { await storage.updateUserVoice(userId, null); } catch {}
+        if (fsSync.existsSync(voicePath)) fsSync.unlinkSync(voicePath);
         return res.json({ success: true, deleted: true });
       }
 
-      const size = Buffer.byteLength(audioBase64, "base64");
-      await storage.updateUserVoice(userId, audioBase64);
-      console.log(`User voice saved to DB: ${size} bytes (user ${userId})`);
+      const audioBuffer = Buffer.from(audioBase64, "base64");
+      const size = audioBuffer.length;
+
+      // 파일시스템 저장 (즉시 사용 가능)
+      fsSync.writeFileSync(voicePath, audioBuffer);
+
+      // DB 저장 (재배포 후에도 유지) — 실패해도 파일시스템 저장은 성공
+      try {
+        await storage.updateUserVoice(userId, audioBase64);
+        console.log(`User voice saved: DB+FS ${size} bytes (user ${userId})`);
+      } catch (dbErr: any) {
+        console.warn(`User voice DB save failed (FS only): ${dbErr?.message}`);
+      }
+
       res.json({ success: true, size });
     } catch (error: any) {
       console.error("Voice save error:", error);
@@ -314,14 +337,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Check if a stored user voice exists (DB)
+  // Check if a stored user voice exists (DB 우선, 파일시스템 fallback)
   app.get("/api/user-voice/status", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user?.id ?? req.user?.claims?.sub;
-      if (!userId) return res.status(401).json({ error: "Unauthorized" });
-      const voiceData = await storage.getUserVoice(userId);
-      const exists = !!voiceData && voiceData.length > 0;
-      const size = exists ? Buffer.byteLength(voiceData!, "base64") : 0;
+      const userId = (req.user as any)?.id;
+      const fsSync = await import("fs");
+      const voicePath = await getVoiceFsPath();
+
+      // DB 확인
+      let exists = false;
+      let size = 0;
+      try {
+        if (userId) {
+          const voiceData = await storage.getUserVoice(userId);
+          if (voiceData && voiceData.length > 0) {
+            exists = true;
+            size = Buffer.byteLength(voiceData, "base64");
+          }
+        }
+      } catch {}
+
+      // 파일시스템 fallback
+      if (!exists && fsSync.existsSync(voicePath)) {
+        const stat = fsSync.statSync(voicePath);
+        if (stat.size > 0) { exists = true; size = stat.size; }
+      }
+
       res.json({ exists, size });
     } catch {
       res.json({ exists: false, size: 0 });
@@ -367,17 +408,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Serve user uploaded voice file (DB에서 읽어 반환)
+  // Serve user uploaded voice file (DB 우선, 파일시스템 fallback)
   app.get("/api/user-voice", isAuthenticated, async (req: any, res) => {
     try {
-      const userId = req.user?.id ?? req.user?.claims?.sub;
-      if (!userId) return res.status(401).json({ error: "Unauthorized" });
-      const voiceData = await storage.getUserVoice(userId);
-      if (!voiceData) return res.status(404).json({ error: "No user voice file" });
-      const buf = Buffer.from(voiceData, "base64");
-      res.setHeader("Content-Type", "audio/mp4");
-      res.setHeader("Cache-Control", "no-cache");
-      res.send(buf);
+      const userId = (req.user as any)?.id;
+      const fsSync = await import("fs");
+      const voicePath = await getVoiceFsPath();
+
+      // DB 시도
+      if (userId) {
+        try {
+          const voiceData = await storage.getUserVoice(userId);
+          if (voiceData && voiceData.length > 0) {
+            res.setHeader("Content-Type", "audio/mp4");
+            res.setHeader("Cache-Control", "no-cache");
+            return res.send(Buffer.from(voiceData, "base64"));
+          }
+        } catch {}
+      }
+
+      // 파일시스템 fallback
+      if (fsSync.existsSync(voicePath)) {
+        res.setHeader("Content-Type", "audio/mp4");
+        res.setHeader("Cache-Control", "no-cache");
+        return fsSync.createReadStream(voicePath).pipe(res);
+      }
+
+      res.status(404).json({ error: "No user voice file" });
     } catch (e: any) {
       res.status(500).json({ error: "Failed to retrieve voice" });
     }
@@ -496,10 +553,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const frameDurations: number[] = [...defaultDurations];
       let directVoicePath: string | null = null;
 
-      if (useDirectVoice && userId) {
-        // DB에서 사용자 목소리 base64 로드 → /tmp에 임시 파일로 저장
+      if (useDirectVoice) {
+        // DB 우선, 파일시스템 fallback으로 사용자 목소리 로드
         try {
-          const voiceBase64 = await storage.getUserVoice(userId);
+          let voiceBase64: string | null = null;
+
+          // 1) DB 조회
+          if (userId) {
+            try { voiceBase64 = await storage.getUserVoice(userId); } catch {}
+          }
+
+          // 2) 파일시스템 fallback
+          if (!voiceBase64) {
+            const voiceFsPath = pathMod.join(process.cwd(), "server/assets/user-voice.m4a");
+            if (fsSync.existsSync(voiceFsPath) && fsSync.statSync(voiceFsPath).size > 0) {
+              voiceBase64 = fsSync.readFileSync(voiceFsPath).toString("base64");
+              // 자동으로 DB에 저장 (다음 재배포 후에도 유지)
+              if (userId) storage.updateUserVoice(userId, voiceBase64).catch(() => {});
+            }
+          }
+
           if (voiceBase64 && voiceBase64.length > 0) {
             const voiceTmp = pathMod.join(tmpDir, `${contentId}-uv.m4a`);
             fsSync.writeFileSync(voiceTmp, Buffer.from(voiceBase64, "base64"));
