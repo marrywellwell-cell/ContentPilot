@@ -738,6 +738,7 @@ export default function InventionIdea() {
         body: JSON.stringify({
           scenes: contentData.shortsScenes,
           imageUrls: contentData.instagramImageUrls,
+          useDirectVoice: useDirectVoice && storedVoiceExists,
         }),
       });
       if (!startRes.ok) {

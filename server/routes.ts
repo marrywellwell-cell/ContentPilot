@@ -451,7 +451,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ── 서버 사이드 영상 생성: 백그라운드 처리 + 폴링 (Render 30초 타임아웃 우회) ──
   const videoJobStore = new Map<string, { status: "processing" | "done" | "error"; url?: string; error?: string }>();
 
-  async function runVideoGenJob(contentId: string, scenes: any[], imageUrls: string[]) {
+  async function runVideoGenJob(contentId: string, scenes: any[], imageUrls: string[], useDirectVoice = false) {
     try {
       const fsSync = await import("fs");
       const pathMod = await import("path");
@@ -481,40 +481,66 @@ export async function registerRoutes(app: Express): Promise<Server> {
         })
       );
 
-      // ── TTS 나레이션 생성 (씬별) ──
+      // ── 오디오 준비 (내 목소리 또는 TTS) ──
       const defaultDurations = scenes.map((s: any) =>
         Math.max(Math.min(parseInt(String(s.duration).match(/\d+/)?.[0] ?? "5"), 5), 3)
       );
       const audioFiles: (string | null)[] = new Array(scenes.length).fill(null);
       const frameDurations: number[] = [...defaultDurations];
+      let directVoicePath: string | null = null;
 
-      for (let i = 0; i < scenes.length; i++) {
-        const narration = String(scenes[i].narration || "").trim().slice(0, 300);
-        if (!narration) continue;
-        try {
-          const audioPath = pathMod.join(tmpDir, `${contentId}-tts${i}.mp3`);
-          const { EdgeTTS } = await import("node-edge-tts") as any;
-          const tts = new EdgeTTS({
-            voice: "ko-KR-HyunsuMultilingualNeural",
-            lang: "ko-KR",
-            outputFormat: "audio-24khz-96kbitrate-mono-mp3",
-          });
-          await tts.ttsPromise(narration, audioPath);
-
-          if (fsSync.existsSync(audioPath) && fsSync.statSync(audioPath).size > 0) {
-            audioFiles[i] = audioPath;
-            const probe = await execFileAsync(ffBin, ["-i", audioPath, "-f", "null", "-"], {
-              maxBuffer: 1024 * 1024 * 5, timeout: 15000,
-            }).catch((e: any) => e);
-            const stderr: string = (probe as any).stderr ?? (probe as any).message ?? "";
-            const match = stderr.match(/Duration: (\d+):(\d+):([\d.]+)/);
-            if (match) {
-              const dur = parseInt(match[1]) * 3600 + parseInt(match[2]) * 60 + parseFloat(match[3]);
-              frameDurations[i] = Math.max(dur + 0.3, 2);
-            }
+      if (useDirectVoice) {
+        // 사용자 업로드 목소리 파일 사용
+        const voiceSrc = pathMod.join(process.cwd(), "server/assets/user-voice.m4a");
+        if (fsSync.existsSync(voiceSrc) && fsSync.statSync(voiceSrc).size > 0) {
+          directVoicePath = voiceSrc;
+          // 음성 총 길이를 씬 수로 균등 분배해 각 씬 재생 시간 설정
+          const probe = await execFileAsync(ffBin, ["-i", voiceSrc, "-f", "null", "-"], {
+            maxBuffer: 1024 * 1024 * 5, timeout: 15000,
+          }).catch((e: any) => e);
+          const stderr: string = (probe as any).stderr ?? (probe as any).message ?? "";
+          const match = stderr.match(/Duration: (\d+):(\d+):([\d.]+)/);
+          if (match) {
+            const totalDur = parseInt(match[1]) * 3600 + parseInt(match[2]) * 60 + parseFloat(match[3]);
+            const perScene = Math.max(totalDur / scenes.length, 2);
+            for (let i = 0; i < frameDurations.length; i++) frameDurations[i] = perScene;
+            console.log(`[video-job] 사용자 목소리 사용: ${totalDur.toFixed(1)}s → 씬당 ${perScene.toFixed(1)}s`);
           }
-        } catch (e: any) {
-          console.warn(`[video-job] TTS 씬${i} 실패:`, e?.message);
+        } else {
+          console.warn("[video-job] 사용자 목소리 파일 없음, TTS로 fallback");
+        }
+      }
+
+      if (!directVoicePath) {
+        // TTS 나레이션 생성 (씬별)
+        for (let i = 0; i < scenes.length; i++) {
+          const narration = String(scenes[i].narration || "").trim().slice(0, 300);
+          if (!narration) continue;
+          try {
+            const audioPath = pathMod.join(tmpDir, `${contentId}-tts${i}.mp3`);
+            const { EdgeTTS } = await import("node-edge-tts") as any;
+            const tts = new EdgeTTS({
+              voice: "ko-KR-HyunsuMultilingualNeural",
+              lang: "ko-KR",
+              outputFormat: "audio-24khz-96kbitrate-mono-mp3",
+            });
+            await tts.ttsPromise(narration, audioPath);
+
+            if (fsSync.existsSync(audioPath) && fsSync.statSync(audioPath).size > 0) {
+              audioFiles[i] = audioPath;
+              const probe = await execFileAsync(ffBin, ["-i", audioPath, "-f", "null", "-"], {
+                maxBuffer: 1024 * 1024 * 5, timeout: 15000,
+              }).catch((e: any) => e);
+              const stderr: string = (probe as any).stderr ?? (probe as any).message ?? "";
+              const match = stderr.match(/Duration: (\d+):(\d+):([\d.]+)/);
+              if (match) {
+                const dur = parseInt(match[1]) * 3600 + parseInt(match[2]) * 60 + parseFloat(match[3]);
+                frameDurations[i] = Math.max(dur + 0.3, 2);
+              }
+            }
+          } catch (e: any) {
+            console.warn(`[video-job] TTS 씬${i} 실패:`, e?.message);
+          }
         }
       }
 
@@ -581,13 +607,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       ], { maxBuffer: 1024 * 1024 * 200, timeout: 180000 });
 
       // ── 오디오 합성 ──
-      const validAudioFiles = audioFiles.filter((f): f is string => !!f && fsSync.existsSync(f));
-      if (validAudioFiles.length > 0) {
-        let combinedAudio: string;
+      let finalAudio: string | null = directVoicePath;
+
+      if (!finalAudio) {
+        // TTS 오디오 합치기
+        const validAudioFiles = audioFiles.filter((f): f is string => !!f && fsSync.existsSync(f));
         if (validAudioFiles.length === 1) {
-          combinedAudio = validAudioFiles[0];
-        } else {
-          combinedAudio = pathMod.join(tmpDir, `${contentId}-audio.mp3`);
+          finalAudio = validAudioFiles[0];
+        } else if (validAudioFiles.length > 1) {
+          const combinedAudio = pathMod.join(tmpDir, `${contentId}-audio.mp3`);
           const audioConcatTxt = pathMod.join(tmpDir, `${contentId}-aconcat.txt`);
           let aContent = "";
           for (const f of validAudioFiles) aContent += `file '${f}'\n`;
@@ -597,17 +625,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
             "-c:a", "copy", combinedAudio,
           ], { maxBuffer: 1024 * 1024 * 50, timeout: 60000 });
           try { fsSync.unlinkSync(audioConcatTxt); } catch {}
+          finalAudio = combinedAudio;
         }
+      }
 
+      if (finalAudio && fsSync.existsSync(finalAudio)) {
         await execFileAsync(ffBin, [
-          "-y", "-i", rawMp4, "-i", combinedAudio,
+          "-y", "-i", rawMp4, "-i", finalAudio,
           "-c:v", "copy", "-c:a", "aac", "-b:a", "128k",
           "-shortest", "-movflags", "+faststart", mp4Path,
         ], { maxBuffer: 1024 * 1024 * 200, timeout: 120000 });
 
         try { fsSync.unlinkSync(rawMp4); } catch {}
-        if (combinedAudio !== validAudioFiles[0]) { try { fsSync.unlinkSync(combinedAudio); } catch {} }
-        for (const f of audioFiles) { if (f) try { fsSync.unlinkSync(f); } catch {} }
+        // TTS 임시 파일만 삭제 (사용자 목소리는 유지)
+        if (!directVoicePath) {
+          for (const f of audioFiles) { if (f) try { fsSync.unlinkSync(f); } catch {} }
+          if (finalAudio !== audioFiles.find(f => f === finalAudio)) { try { fsSync.unlinkSync(finalAudio); } catch {} }
+        }
       } else {
         // 오디오 없으면 그대로 최종 경로로 이동
         try { fsSync.renameSync(rawMp4, mp4Path); } catch {
@@ -630,14 +664,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // 영상 생성 시작 → 즉시 응답 (백그라운드 처리)
   app.post("/api/shorts-video/server-generate/:contentId", isAuthenticated, async (req: any, res) => {
     const { contentId } = req.params;
-    const { scenes: rawScenes, imageUrls } = req.body as { scenes: any[]; imageUrls: string[] };
+    const { scenes: rawScenes, imageUrls, useDirectVoice } = req.body as { scenes: any[]; imageUrls: string[]; useDirectVoice?: boolean };
     if (!rawScenes?.length || !imageUrls?.length) {
       return res.status(400).json({ error: "scenes와 imageUrls가 필요합니다." });
     }
     const scenes = rawScenes.slice(0, 3);
     videoJobStore.set(contentId, { status: "processing" });
     // 백그라운드에서 실행 (await 없음 → 즉시 응답)
-    runVideoGenJob(contentId, scenes, imageUrls);
+    runVideoGenJob(contentId, scenes, imageUrls, !!useDirectVoice);
     res.json({ status: "processing", jobId: contentId });
   });
 
