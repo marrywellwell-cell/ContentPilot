@@ -8,8 +8,15 @@ import { insertContentSetSchema, insertBrandAnalysisSchema, insertMonthlyPlanSch
 import { z } from "zod";
 import pLimit from "p-limit";
 import { setupAuth, isAuthenticated, isAdmin, isAuthenticatedOrApiKey } from "./auth";
-// ffmpeg-static: npm으로 설치된 정적 바이너리 경로 (시스템 ffmpeg 불필요)
-import ffmpegStaticPath from "ffmpeg-static";
+// ffmpeg 바이너리 경로 (최초 호출 시 lazy 로드)
+async function getFfmpegPath(): Promise<string> {
+  try {
+    const mod = await import("ffmpeg-static");
+    const p = (mod as any).default ?? mod;
+    if (typeof p === "string" && p.length > 0) return p;
+  } catch {}
+  return "ffmpeg";
+}
 
 // Sanitize URLs to prevent HTML injection
 function escapeHtml(text: string): string {
@@ -531,7 +538,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       concatContent += `file '${frameFiles[frameFiles.length - 1]}'\n`;
       fsSync.writeFileSync(concatTxt, concatContent);
 
-      const ffBin = ffmpegStaticPath ?? "ffmpeg";
+      const ffBin = await getFfmpegPath();
       await execFileAsync(ffBin, [
         "-y", "-f", "concat", "-safe", "0", "-i", concatTxt,
         "-vf", "scale=1080:1920:force_original_aspect_ratio=decrease,pad=1080:1920:(ow-iw)/2:(oh-ih)/2",
@@ -626,12 +633,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // ffmpeg 설치 여부 확인
       try {
-        await execFileAsync(ffmpegStaticPath ?? "ffmpeg", ["-version"]);
+        await execFileAsync(await getFfmpegPath(), ["-version"]);
       } catch {
         return res.status(500).json({ error: "ffmpeg가 서버에 설치되어 있지 않습니다. 서버 관리자에게 문의하세요." });
       }
 
-      await execFileAsync(ffmpegStaticPath ?? "ffmpeg", [
+      await execFileAsync(await getFfmpegPath(), [
         "-y",
         "-i", webmPath,
         "-c:v", "libx264",
@@ -2633,7 +2640,7 @@ Solution: ${brandAnalysis.solution || "없음"}`;
       await fs.writeFile(imgPath, Buffer.from(b64, "base64"));
 
       // ffmpeg: 이미지 → 20초 MP4 (1080x1350, 세로 영상)
-      await execFileAsync(ffmpegStaticPath ?? "ffmpeg", [
+      await execFileAsync(await getFfmpegPath(), [
         "-y",
         "-loop", "1",
         "-i", imgPath,
