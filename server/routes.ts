@@ -8,6 +8,8 @@ import { insertContentSetSchema, insertBrandAnalysisSchema, insertMonthlyPlanSch
 import { z } from "zod";
 import pLimit from "p-limit";
 import { setupAuth, isAuthenticated, isAdmin, isAuthenticatedOrApiKey } from "./auth";
+// ffmpeg-static: npm으로 설치된 정적 바이너리 경로 (시스템 ffmpeg 불필요)
+import ffmpegStaticPath from "ffmpeg-static";
 
 // Sanitize URLs to prevent HTML injection
 function escapeHtml(text: string): string {
@@ -540,7 +542,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // 3. ffmpeg: 프레임 → 1080×1920 MP4 (ultrafast 인코딩)
       const mp4Path = pathMod.join(outDir, `${contentId}.mp4`);
       // ffmpeg 설치 여부 확인
-      try { await execFileAsync("ffmpeg", ["-version"]); }
+      try { await execFileAsync(ffmpegStaticPath ?? "ffmpeg", ["-version"]); }
       catch { return res.status(500).json({ error: "ffmpeg가 서버에 설치되어 있지 않습니다. Render 대시보드 → Settings → Build Command에 'apt-get install -y ffmpeg &&' 를 추가해주세요." }); }
 
       const ffArgs: string[] = ["-y"];
@@ -563,7 +565,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         mp4Path
       );
 
-      await execFileAsync("ffmpeg", ffArgs, { maxBuffer: 1024 * 1024 * 200, timeout: 50000 });
+      await execFileAsync(ffmpegStaticPath ?? "ffmpeg", ffArgs, { maxBuffer: 1024 * 1024 * 200, timeout: 50000 });
 
       frameFiles.forEach(f => { try { fsSync.unlinkSync(f); } catch {} });
       await storage.updateInventionContent(contentId, { shortsVideoUrl: `/api/shorts-video/mp4/${contentId}` } as any);
@@ -621,12 +623,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // ffmpeg 설치 여부 확인
       try {
-        await execFileAsync("ffmpeg", ["-version"]);
+        await execFileAsync(ffmpegStaticPath ?? "ffmpeg", ["-version"]);
       } catch {
         return res.status(500).json({ error: "ffmpeg가 서버에 설치되어 있지 않습니다. 서버 관리자에게 문의하세요." });
       }
 
-      await execFileAsync("ffmpeg", [
+      await execFileAsync(ffmpegStaticPath ?? "ffmpeg", [
         "-y",
         "-i", webmPath,
         "-c:v", "libx264",
@@ -2628,7 +2630,7 @@ Solution: ${brandAnalysis.solution || "없음"}`;
       await fs.writeFile(imgPath, Buffer.from(b64, "base64"));
 
       // ffmpeg: 이미지 → 20초 MP4 (1080x1350, 세로 영상)
-      await execFileAsync("ffmpeg", [
+      await execFileAsync(ffmpegStaticPath ?? "ffmpeg", [
         "-y",
         "-loop", "1",
         "-i", imgPath,
