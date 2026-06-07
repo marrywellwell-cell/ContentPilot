@@ -539,6 +539,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // 3. ffmpeg: 프레임 → 1080×1920 MP4 (ultrafast 인코딩)
       const mp4Path = pathMod.join(outDir, `${contentId}.mp4`);
+      // ffmpeg 설치 여부 확인
+      try { await execFileAsync("ffmpeg", ["-version"]); }
+      catch { return res.status(500).json({ error: "ffmpeg가 서버에 설치되어 있지 않습니다. Render 대시보드 → Settings → Build Command에 'apt-get install -y ffmpeg &&' 를 추가해주세요." }); }
+
       const ffArgs: string[] = ["-y"];
       frameFiles.forEach((f, i) => { ffArgs.push("-loop", "1", "-t", String(durations[i]), "-i", f); });
 
